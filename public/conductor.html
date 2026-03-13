@@ -27,12 +27,14 @@
   .assign-box.bass { background: rgba(52,211,153,0.2); color: #34d399; }
   .midi-select { background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 8px 12px; border-radius: 8px; font-size: 1rem; width: 100%; }
   .midi-status { font-size: 0.85rem; color: #888; margin-top: 6px; }
-  .piano { display: flex; position: relative; height: 120px; margin-top: 10px; user-select: none; -webkit-user-select: none; }
-  .key { position: relative; border: 1px solid #333; border-radius: 0 0 6px 6px; cursor: pointer; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; font-size: 0.65rem; color: #888; transition: background 0.05s; }
-  .key.white { background: #ddd; flex: 1; height: 120px; z-index: 1; }
-  .key.black { background: #222; width: 28px; height: 75px; margin-left: -14px; margin-right: -14px; z-index: 2; color: #666; }
+  .piano { display: flex; position: relative; height: 140px; margin-top: 10px; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .key { position: relative; border: 1px solid #333; border-radius: 0 0 6px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 6px; font-size: 0.65rem; color: #888; transition: background 0.05s; }
+  .key.white { background: #ddd; flex: 1; height: 140px; z-index: 1; }
+  .key.black { background: #222; width: 28px; height: 85px; margin-left: -14px; margin-right: -14px; z-index: 2; color: #666; }
   .key.white.active { background: #e94560; }
   .key.black.active { background: #c23152; }
+  .key .keybind { font-size: 0.6rem; color: rgba(0,0,0,0.35); margin-top: 2px; font-weight: bold; }
+  .key.black .keybind { color: rgba(255,255,255,0.3); }
   .held-notes { font-size: 1.1rem; color: #ccc; margin-top: 8px; min-height: 1.5em; }
   #status { font-size: 0.85rem; color: #888; margin-top: 10px; }
   button { background: #e94560; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
@@ -94,6 +96,8 @@ let ws = null;
 let midiAccess = null;
 let currentInput = null;
 let heldNotes = new Set();
+// Track which parts have singers — updated from server room state messages
+let singerCounts = { soprano: 0, alto: 0, tenor: 0, bass: 0 };
 
 function noteName(midi) {
   return NOTES[midi % 12] + (Math.floor(midi / 12) - 1);
@@ -119,36 +123,71 @@ function assignVoices(notes) {
 
   const sorted = [...notes].sort((a, b) => a - b);
 
-  if (sorted.length >= 4) {
-    // Bottom-up assignment
-    return {
-      bass:    fitToRange(sorted[0], 'bass'),
-      tenor:   fitToRange(sorted[1], 'tenor'),
-      alto:    fitToRange(sorted[sorted.length - 2], 'alto'),
-      soprano: fitToRange(sorted[sorted.length - 1], 'soprano'),
-    };
-  }
+  // Only assign notes to parts that actually have singers
+  const activeParts = PARTS.filter(p => (singerCounts[p] || 0) > 0);
+  // If no one has joined yet, assign to all parts (for testing/preview)
+  const partsToAssign = activeParts.length > 0 ? activeParts : PARTS;
 
-  // Fewer than 4 notes: assign each part to the closest note by range midpoint
-  const result = {};
-  for (const part of PARTS) {
-    let bestNote = sorted[0];
-    let bestDist = Infinity;
-    for (const n of sorted) {
-      // Compare in terms of pitch class distance to the range midpoint
-      const dist = Math.abs(n - RANGE_MID[part]);
-      // Also try octave transpositions
+  // Sort active parts by range midpoint (low to high): bass, tenor, alto, soprano
+  const partsByRange = [...partsToAssign].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
+
+  const result = { soprano: -1, alto: -1, tenor: -1, bass: -1 };
+
+  if (sorted.length >= partsByRange.length) {
+    // Enough notes for all active parts — assign bottom-up
+    for (let i = 0; i < partsByRange.length; i++) {
+      // Spread notes evenly: lowest parts get lowest notes, highest get highest
+      const noteIdx = Math.round(i * (sorted.length - 1) / (partsByRange.length - 1 || 1));
+      result[partsByRange[i]] = fitToRange(sorted[noteIdx], partsByRange[i]);
+    }
+  } else {
+    // Fewer notes than active parts — every held note must have at least
+    // one part assigned, then remaining parts go to their closest note.
+
+    // Helper: distance from a part's range midpoint to a note (best octave)
+    function partNoteDist(part, note) {
+      let best = Infinity;
       for (let oct = -2; oct <= 2; oct++) {
-        const transposed = n + oct * 12;
-        const d = Math.abs(transposed - RANGE_MID[part]);
-        if (d < bestDist) {
-          bestDist = d;
-          bestNote = transposed;
-        }
+        best = Math.min(best, Math.abs((note + oct * 12) - RANGE_MID[part]));
+      }
+      return best;
+    }
+
+    // Step 1: For each note, find the closest unassigned part → guarantees coverage
+    const unassigned = new Set(partsByRange);
+    const notePartMap = new Map(); // note index → array of assigned parts
+    for (let ni = 0; ni < sorted.length; ni++) notePartMap.set(ni, []);
+
+    for (let ni = 0; ni < sorted.length; ni++) {
+      let bestPart = null, bestDist = Infinity;
+      for (const part of unassigned) {
+        const d = partNoteDist(part, sorted[ni]);
+        if (d < bestDist) { bestDist = d; bestPart = part; }
+      }
+      if (bestPart) {
+        notePartMap.get(ni).push(bestPart);
+        unassigned.delete(bestPart);
       }
     }
-    result[part] = fitToRange(bestNote, part);
+
+    // Step 2: Remaining parts go to their closest note
+    for (const part of unassigned) {
+      let bestNi = 0, bestDist = Infinity;
+      for (let ni = 0; ni < sorted.length; ni++) {
+        const d = partNoteDist(part, sorted[ni]);
+        if (d < bestDist) { bestDist = d; bestNi = ni; }
+      }
+      notePartMap.get(bestNi).push(part);
+    }
+
+    // Step 3: Write results
+    for (let ni = 0; ni < sorted.length; ni++) {
+      for (const part of notePartMap.get(ni)) {
+        result[part] = fitToRange(sorted[ni], part);
+      }
+    }
   }
+
   return result;
 }
 
@@ -160,6 +199,12 @@ function updateDisplay() {
   if (notes.length === 0) {
     heldEl.textContent = 'No notes held';
     assignEl.innerHTML = '';
+    // Send silence to all parts
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ t: 'n', s: -1, a: -1, e: -1, b: -1 }));
+    }
+    // Clear piano highlights
+    document.querySelectorAll('.key').forEach(k => k.classList.remove('active'));
     return;
   }
 
@@ -219,13 +264,21 @@ function createRoom() {
       document.getElementById('keyboardSection').style.display = '';
       initMIDI();
     } else if (msg.t === 'r') {
-      document.getElementById('countS').textContent = msg.singers.soprano || 0;
-      document.getElementById('countA').textContent = msg.singers.alto || 0;
-      document.getElementById('countT').textContent = msg.singers.tenor || 0;
-      document.getElementById('countB').textContent = msg.singers.bass || 0;
+      singerCounts = msg.singers;
+      document.getElementById('countS').textContent = singerCounts.soprano || 0;
+      document.getElementById('countA').textContent = singerCounts.alto || 0;
+      document.getElementById('countT').textContent = singerCounts.tenor || 0;
+      document.getElementById('countB').textContent = singerCounts.bass || 0;
+      // Re-run assignment in case parts changed while notes are held
+      if (heldNotes.size > 0) updateDisplay();
     }
   };
   ws.onclose = () => { document.getElementById('status').textContent = 'Disconnected'; };
+}
+
+// Auto-create room in test mode
+if (new URLSearchParams(location.search).has('test')) {
+  createRoom();
 }
 
 // MIDI
@@ -278,11 +331,14 @@ function onMIDIMessage(e) {
 }
 
 // Fallback on-screen keyboard (C3 to C5, 2 octaves)
+// Pointer tracking for multi-touch support
+const pointerToMidi = new Map(); // pointerId -> midi
+
 function buildPiano() {
   const piano = document.getElementById('piano');
   const startMidi = 48; // C3
   const endMidi = 72;   // C5
-  const blackKeys = new Set([1,3,6,8,10]); // semitone offsets that are black
+  const blackKeys = new Set([1,3,6,8,10]);
 
   for (let midi = startMidi; midi <= endMidi; midi++) {
     const semitone = midi % 12;
@@ -290,20 +346,84 @@ function buildPiano() {
     const key = document.createElement('div');
     key.className = `key ${isBlack ? 'black' : 'white'}`;
     key.dataset.midi = midi;
-    if (!isBlack) key.textContent = NOTES[semitone] + (Math.floor(midi / 12) - 1);
 
-    // Touch/mouse events
-    const down = (e) => { e.preventDefault(); noteOn(midi); };
-    const up = (e) => { e.preventDefault(); noteOff(midi); };
-    key.addEventListener('mousedown', down);
-    key.addEventListener('mouseup', up);
-    key.addEventListener('mouseleave', up);
-    key.addEventListener('touchstart', down, { passive: false });
-    key.addEventListener('touchend', up, { passive: false });
+    // Note name label
+    const nameLabel = document.createTextNode(isBlack ? '' : NOTES[semitone] + (Math.floor(midi / 12) - 1));
+    key.appendChild(nameLabel);
+
+    // Keyboard shortcut label
+    const bindKey = Object.entries(KEY_TO_MIDI).find(([k, m]) => m === midi);
+    if (bindKey) {
+      const bindEl = document.createElement('span');
+      bindEl.className = 'keybind';
+      bindEl.textContent = bindKey[0].toUpperCase();
+      key.appendChild(bindEl);
+    }
+
+    // Pointer events for multi-touch
+    key.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      key.setPointerCapture(e.pointerId);
+      pointerToMidi.set(e.pointerId, midi);
+      noteOn(midi);
+    });
+    key.addEventListener('pointerup', (e) => {
+      e.preventDefault();
+      const m = pointerToMidi.get(e.pointerId);
+      if (m !== undefined) { noteOff(m); pointerToMidi.delete(e.pointerId); }
+    });
+    key.addEventListener('pointercancel', (e) => {
+      const m = pointerToMidi.get(e.pointerId);
+      if (m !== undefined) { noteOff(m); pointerToMidi.delete(e.pointerId); }
+    });
 
     piano.appendChild(key);
   }
 }
+
+// Laptop keyboard mapping: number row + letter keys for two octaves
+// White keys: 1-8 = C3-C4, then 9,0,-,=,backspace for D4-G4
+// Black keys: q=C#3, w=D#3, r=F#3, t=G#3, y=A#3, i=C#4, o=D#4, [=F#4, ]=G#4
+const KEY_TO_MIDI = {
+  // C3-B3 (white + black)
+  '1': 48,  'q': 49,           // C3, C#3
+  '2': 50,  'w': 51,           // D3, D#3
+  '3': 52,                      // E3
+  '4': 53,  'r': 54,           // F3, F#3
+  '5': 55,  't': 56,           // G3, G#3
+  '6': 57,  'y': 58,           // A3, A#3
+  '7': 59,                      // B3
+  // C4-C5 (white + black)
+  '8': 60,  'i': 61,           // C4, C#4
+  '9': 62,  'o': 63,           // D4, D#4
+  '0': 64,                      // E4
+  '-': 65,  '[': 66,           // F4, F#4
+  '=': 67,  ']': 68,           // G4, G#4
+  'Backspace': 69, '\\': 70,   // A4, A#4
+  // No good key for B4 and C5, but they're on the on-screen piano
+};
+
+const heldKeyboard = new Set(); // track held keys to ignore key-repeat
+
+document.addEventListener('keydown', (e) => {
+  // Don't capture if typing in an input
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  const midi = KEY_TO_MIDI[e.key];
+  if (midi !== undefined && !heldKeyboard.has(e.key)) {
+    e.preventDefault();
+    heldKeyboard.add(e.key);
+    noteOn(midi);
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  const midi = KEY_TO_MIDI[e.key];
+  if (midi !== undefined) {
+    heldKeyboard.add(e.key); // ensure it's tracked even if keydown was missed
+    heldKeyboard.delete(e.key);
+    noteOff(midi);
+  }
+});
 
 buildPiano();
 </script>

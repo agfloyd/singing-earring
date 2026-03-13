@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Singing Earring server — WebSocket relay + static file serving."""
+import argparse
 import asyncio
 import json
 import os
@@ -13,6 +14,8 @@ from websockets.http11 import Response
 
 PORT = 3000
 PUBLIC_DIR = Path(__file__).parent / "public"
+TEST_MODE = False
+TEST_CODE = "TEST"
 MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "text/javascript",
@@ -23,7 +26,7 @@ MIME_TYPES = {
 # Room storage
 rooms: dict = {}
 
-CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
+CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ"
 
 
 def generate_code():
@@ -50,7 +53,7 @@ def serve_static(connection, request):
     if request.headers.get("Upgrade", "").lower() == "websocket":
         return None
 
-    path = request.path
+    path = request.path.split("?")[0]  # Strip query params
     if path == "/":
         path = "/index.html"
     if path == "/conductor":
@@ -97,8 +100,16 @@ async def handler(websocket):
             t = msg.get("t")
 
             if t == "create":
-                code = generate_code()
-                rooms[code] = {"conductor": websocket, "singers": {}}
+                if TEST_MODE:
+                    code = TEST_CODE
+                    # Reuse existing test room or create fresh
+                    if code in rooms:
+                        rooms[code]["conductor"] = websocket
+                    else:
+                        rooms[code] = {"conductor": websocket, "singers": {}}
+                else:
+                    code = generate_code()
+                    rooms[code] = {"conductor": websocket, "singers": {}}
                 my_room = rooms[code]
                 my_code = code
                 my_role = "conductor"
@@ -106,10 +117,17 @@ async def handler(websocket):
 
             elif t == "join":
                 code = (msg.get("code") or "").upper()
+                if TEST_MODE and not code:
+                    code = TEST_CODE
                 room = rooms.get(code)
                 if not room:
-                    await websocket.send(json.dumps({"t": "error", "msg": "Room not found"}))
-                    continue
+                    if TEST_MODE:
+                        # Auto-create room if conductor hasn't connected yet
+                        rooms[code] = {"conductor": None, "singers": {}}
+                        room = rooms[code]
+                    else:
+                        await websocket.send(json.dumps({"t": "error", "msg": "Room not found"}))
+                        continue
                 room["singers"][websocket] = {"part": msg.get("part", "soprano")}
                 my_room = room
                 my_code = code
@@ -161,11 +179,22 @@ async def main():
         compression=None,
     ):
         local_ip = get_local_ip()
-        print(f"Singing Earring server running on http://0.0.0.0:{PORT}")
-        print(f"  Conductor: http://{local_ip}:{PORT}/conductor")
-        print(f"  Singers:   http://{local_ip}:{PORT}")
+        if TEST_MODE:
+            print(f"Singing Earring server running in TEST MODE on http://0.0.0.0:{PORT}")
+            print(f"  Room code: {TEST_CODE} (fixed)")
+            print(f"  Conductor: http://{local_ip}:{PORT}/conductor?test")
+            print(f"  Singers:   http://{local_ip}:{PORT}?test")
+        else:
+            print(f"Singing Earring server running on http://0.0.0.0:{PORT}")
+            print(f"  Conductor: http://{local_ip}:{PORT}/conductor")
+            print(f"  Singers:   http://{local_ip}:{PORT}")
         await asyncio.Future()
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Singing Earring server")
+    parser.add_argument("--test", action="store_true",
+                        help="Test mode: fixed room code TEST, auto-join for singers")
+    args = parser.parse_args()
+    TEST_MODE = args.test
     asyncio.run(main())

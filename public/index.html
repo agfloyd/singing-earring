@@ -89,10 +89,15 @@ const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 let selectedPart = null;
 let ws = null;
 let audioCtx = null;
-let oscillator = null;
+let oscillators = [];  // Multiple oscillators for rich tone
 let gainNode = null;
+let filterNode = null;
 let currentMidi = -1;
 let wakeLock = null;
+let roomCode = null;
+let intentionalClose = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT = 10;
 
 function noteName(midi) {
   if (midi < 0) return '---';
@@ -121,7 +126,7 @@ function checkReady() {
 }
 
 document.getElementById('codeInput').addEventListener('input', (e) => {
-  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
   checkReady();
 });
 
@@ -138,21 +143,67 @@ function initAudio() {
   src.connect(audioCtx.destination);
   src.start();
 
-  // Persistent oscillator -> gain -> destination
-  oscillator = audioCtx.createOscillator();
-  oscillator.type = 'triangle';
-  oscillator.frequency.value = 440;
+  // Keep-alive: a silent <audio> element prevents the OS from suspending
+  // the audio session when the screen turns off. This is the key trick
+  // that keeps Web Audio oscillators + WebSocket alive during screen-off.
+  startSilentKeepAlive();
 
+  // Glass armonica–style synthesis: layered sine oscillators at harmonics
+  // with slight detune, through a gentle low-pass filter for warmth.
   gainNode = audioCtx.createGain();
   gainNode.gain.value = 0; // Start silent
 
-  oscillator.connect(gainNode);
+  filterNode = audioCtx.createBiquadFilter();
+  filterNode.type = 'lowpass';
+  filterNode.frequency.value = 3000;
+  filterNode.Q.value = 0.7;
+
+  // Harmonic partials: [multiplier, amplitude, detune in cents]
+  const partials = [
+    [1,    0.45,  0],    // Fundamental
+    [2,    0.18,  3],    // Octave, slightly sharp
+    [3,    0.08, -4],    // 12th, slightly flat
+    [4,    0.04,  5],    // Double octave
+    [0.5,  0.10, -2],    // Sub-octave for body
+  ];
+
+  for (const [mult, amp, detune] of partials) {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 440 * mult;
+    osc.detune.value = detune;
+
+    const partialGain = audioCtx.createGain();
+    partialGain.gain.value = amp;
+
+    osc.connect(partialGain);
+    partialGain.connect(filterNode);
+    osc.start();
+
+    oscillators.push({ osc, gain: partialGain, mult });
+  }
+
+  filterNode.connect(gainNode);
   gainNode.connect(audioCtx.destination);
-  oscillator.start();
+}
+
+// Generate a tiny silent WAV as a data URL and loop it via <audio>.
+// This keeps the audio session alive on iOS/Android when screen is off.
+function startSilentKeepAlive() {
+  if (document.getElementById('keepAlive')) return;
+  // Minimal WAV: 1 sample of silence, 8-bit mono 8kHz
+  const wav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAESsAAABAAgAZGF0YQAAAAA=';
+  const audio = document.createElement('audio');
+  audio.id = 'keepAlive';
+  audio.loop = true;
+  audio.src = wav;
+  audio.volume = 0.01; // Near-silent but nonzero so OS doesn't optimize it away
+  document.body.appendChild(audio);
+  audio.play().catch(() => {}); // Will succeed because we're in a user gesture context
 }
 
 function playNote(midi) {
-  if (!audioCtx || !oscillator) return;
+  if (!audioCtx || oscillators.length === 0) return;
 
   if (midi < 0) {
     // Silence — ramp gain down
@@ -166,12 +217,16 @@ function playNote(midi) {
   const freq = midiToFreq(midi);
 
   if (currentMidi < 0) {
-    // Coming from silence — set frequency immediately, ramp gain up
-    oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.005);
-    gainNode.gain.setTargetAtTime(0.45, audioCtx.currentTime, 0.01);
+    // Coming from silence — set frequencies immediately, ramp gain up
+    for (const p of oscillators) {
+      p.osc.frequency.setTargetAtTime(freq * p.mult, audioCtx.currentTime, 0.005);
+    }
+    gainNode.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
   } else {
-    // Changing notes — glide frequency quickly
-    oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.015);
+    // Changing notes — glide frequencies quickly
+    for (const p of oscillators) {
+      p.osc.frequency.setTargetAtTime(freq * p.mult, audioCtx.currentTime, 0.015);
+    }
   }
 
   currentMidi = midi;
@@ -197,20 +252,12 @@ async function requestWakeLock() {
   } catch {}
 }
 
-function joinRoom() {
-  const code = document.getElementById('codeInput').value.trim().toUpperCase();
-  if (code.length !== 4 || !selectedPart) return;
-
-  // Init audio on this user tap (iOS requirement)
-  initAudio();
-
-  const errorEl = document.getElementById('error');
-  errorEl.textContent = '';
-
+function connectWebSocket(code, isReconnect) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}`);
 
   ws.onopen = () => {
+    reconnectAttempts = 0;
     ws.send(JSON.stringify({ t: 'join', code, part: selectedPart }));
   };
 
@@ -218,58 +265,114 @@ function joinRoom() {
     const msg = JSON.parse(e.data);
 
     if (msg.t === 'joined') {
-      // Switch to singing screen
+      roomCode = msg.code;
       document.getElementById('joinScreen').style.display = 'none';
       document.getElementById('singScreen').style.display = '';
       document.getElementById('partLabel').textContent = selectedPart;
       document.getElementById('roomInfo').textContent = `Room: ${msg.code}`;
+      document.getElementById('connStatus').textContent = isReconnect ? 'Reconnected' : 'Connected';
+      document.getElementById('connStatus').className = 'conn-status connected';
       requestWakeLock();
 
     } else if (msg.t === 'error') {
-      errorEl.textContent = msg.msg;
+      if (isReconnect) {
+        // Room gone — stop reconnecting
+        intentionalClose = true;
+        document.getElementById('connStatus').textContent = 'Room closed';
+        document.getElementById('connStatus').className = 'conn-status disconnected';
+      } else {
+        document.getElementById('error').textContent = msg.msg;
+      }
 
     } else if (msg.t === 'n') {
-      // Note assignment — extract our part's note
       const partKey = { soprano: 's', alto: 'a', tenor: 'e', bass: 'b' }[selectedPart];
       const midi = msg[partKey];
       playNote(midi);
       updateNoteDisplay(midi);
 
     } else if (msg.t === 'r') {
-      // Room state update
       const c = msg.singers;
       document.getElementById('singerCounts').textContent =
         `S:${c.soprano||0}  A:${c.alto||0}  T:${c.tenor||0}  B:${c.bass||0}`;
 
     } else if (msg.t === 'ended') {
+      intentionalClose = true;
       document.getElementById('connStatus').textContent = 'Session ended by conductor';
       document.getElementById('connStatus').className = 'conn-status disconnected';
-      gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.03);
+      if (gainNode && audioCtx) gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.03);
     }
   };
 
   ws.onclose = () => {
-    document.getElementById('connStatus').textContent = 'Disconnected';
-    document.getElementById('connStatus').className = 'conn-status disconnected';
+    if (intentionalClose) return;
+    // Auto-reconnect
+    if (roomCode && reconnectAttempts < MAX_RECONNECT) {
+      reconnectAttempts++;
+      const delay = Math.min(1000 * reconnectAttempts, 5000);
+      document.getElementById('connStatus').textContent = `Reconnecting (${reconnectAttempts})...`;
+      document.getElementById('connStatus').className = 'conn-status disconnected';
+      setTimeout(() => {
+        if (!intentionalClose) connectWebSocket(roomCode, true);
+      }, delay);
+    } else {
+      document.getElementById('connStatus').textContent = 'Disconnected';
+      document.getElementById('connStatus').className = 'conn-status disconnected';
+    }
   };
 }
 
+function joinRoom() {
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  if (code.length !== 4 || !selectedPart) return;
+
+  initAudio();
+  document.getElementById('error').textContent = '';
+  intentionalClose = false;
+  reconnectAttempts = 0;
+  connectWebSocket(code, false);
+}
+
 function showJoin() {
+  intentionalClose = true;
   if (ws) ws.close();
   if (gainNode && audioCtx) gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.01);
   currentMidi = -1;
+  roomCode = null;
   document.getElementById('joinScreen').style.display = '';
   document.getElementById('singScreen').style.display = 'none';
   if (wakeLock) { wakeLock.release(); wakeLock = null; }
 }
 
-// Handle visibility change to re-request wake lock
+// Handle visibility change — reconnect + resume audio when phone wakes up
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && ws && ws.readyState === 1) {
+  if (document.visibilityState === 'visible') {
     requestWakeLock();
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    // Resume keep-alive audio if it was paused
+    const ka = document.getElementById('keepAlive');
+    if (ka && ka.paused) ka.play().catch(() => {});
+    // If WS died while sleeping, reconnect
+    if (roomCode && (!ws || ws.readyState > 1) && !intentionalClose) {
+      reconnectAttempts = 0;
+      connectWebSocket(roomCode, true);
+    }
   }
 });
+
+// Test mode: pre-fill room code, hide input, auto-join on part selection
+const isTestMode = new URLSearchParams(location.search).has('test');
+if (isTestMode) {
+  document.getElementById('codeInput').value = 'TEST';
+  document.getElementById('codeInput').style.display = 'none';
+  document.querySelector('.subtitle').textContent = 'Test mode — pick your part';
+
+  // Override selectPart to auto-join after picking
+  const origSelectPart = selectPart;
+  selectPart = function(btn) {
+    origSelectPart(btn);
+    joinRoom();
+  };
+}
 </script>
 </body>
 </html>
