@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Singing Earring</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+  h1 { font-size: 1.8rem; color: #e94560; margin-bottom: 6px; }
+  .subtitle { font-size: 0.9rem; color: #888; margin-bottom: 24px; }
+
+  /* Join screen */
+  #joinScreen { width: 100%; max-width: 360px; text-align: center; }
+  .code-input { background: #16213e; border: 2px solid #0f3460; color: #eee; font-size: 2rem; letter-spacing: 0.3em; text-align: center; padding: 12px; border-radius: 12px; width: 100%; text-transform: uppercase; outline: none; }
+  .code-input:focus { border-color: #e94560; }
+  .code-input::placeholder { color: #555; letter-spacing: 0.15em; font-size: 1.2rem; }
+  .parts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
+  .part-btn { padding: 20px; border-radius: 12px; border: 3px solid transparent; font-size: 1.2rem; font-weight: bold; cursor: pointer; transition: all 0.15s; }
+  .part-btn.soprano { background: rgba(255,107,157,0.15); color: #ff6b9d; }
+  .part-btn.alto { background: rgba(192,132,252,0.15); color: #c084fc; }
+  .part-btn.tenor { background: rgba(96,165,250,0.15); color: #60a5fa; }
+  .part-btn.bass { background: rgba(52,211,153,0.15); color: #34d399; }
+  .part-btn.selected { border-color: currentColor; transform: scale(1.05); }
+  .join-btn { background: #e94560; color: white; border: none; padding: 16px 32px; border-radius: 12px; font-size: 1.2rem; font-weight: bold; cursor: pointer; width: 100%; opacity: 0.4; pointer-events: none; transition: opacity 0.2s; }
+  .join-btn.ready { opacity: 1; pointer-events: auto; }
+  .join-btn.ready:hover { background: #c23152; }
+  .error { color: #e94560; font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
+
+  /* Warnings */
+  .warnings { margin-top: 16px; font-size: 0.75rem; color: #666; line-height: 1.4; }
+
+  /* Singing screen */
+  #singScreen { display: none; width: 100%; max-width: 360px; text-align: center; }
+  .current-note { font-size: 6rem; font-weight: bold; line-height: 1; margin: 20px 0; transition: color 0.1s; }
+  .current-note.soprano { color: #ff6b9d; }
+  .current-note.alto { color: #c084fc; }
+  .current-note.tenor { color: #60a5fa; }
+  .current-note.bass { color: #34d399; }
+  .current-note.silent { color: #444; font-size: 3rem; }
+  .part-label { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.2em; color: #888; }
+  .conn-status { font-size: 0.8rem; margin-top: 20px; }
+  .conn-status.connected { color: #34d399; }
+  .conn-status.disconnected { color: #e94560; }
+  .room-info { font-size: 0.85rem; color: #666; margin-top: 4px; }
+  .change-part { background: none; border: 1px solid #444; color: #888; padding: 8px 16px; border-radius: 8px; margin-top: 20px; font-size: 0.85rem; cursor: pointer; }
+  .change-part:hover { border-color: #888; color: #ccc; }
+
+  /* Singer counts */
+  .singer-counts { display: flex; gap: 12px; justify-content: center; margin-top: 12px; font-size: 0.8rem; color: #666; }
+</style>
+</head>
+<body>
+
+<div id="joinScreen">
+  <h1>Singing Earring</h1>
+  <div class="subtitle">Join a room and sing your part</div>
+
+  <input type="text" class="code-input" id="codeInput" placeholder="Room code" maxlength="4" autocomplete="off" autocapitalize="characters">
+
+  <div class="parts" id="parts">
+    <button class="part-btn soprano" data-part="soprano" onclick="selectPart(this)">Soprano</button>
+    <button class="part-btn alto" data-part="alto" onclick="selectPart(this)">Alto</button>
+    <button class="part-btn tenor" data-part="tenor" onclick="selectPart(this)">Tenor</button>
+    <button class="part-btn bass" data-part="bass" onclick="selectPart(this)">Bass</button>
+  </div>
+
+  <button class="join-btn" id="joinBtn" onclick="joinRoom()">Join</button>
+  <div class="error" id="error"></div>
+
+  <div class="warnings">
+    <p>Use wired headphones for best results. Bluetooth adds noticeable delay.</p>
+    <p>iOS users: make sure your mute switch is OFF.</p>
+  </div>
+</div>
+
+<div id="singScreen">
+  <div class="part-label" id="partLabel"></div>
+  <div class="current-note silent" id="noteDisplay">---</div>
+  <div class="singer-counts" id="singerCounts"></div>
+  <div class="conn-status connected" id="connStatus">Connected</div>
+  <div class="room-info" id="roomInfo"></div>
+  <button class="change-part" onclick="showJoin()">Change Part</button>
+</div>
+
+<script>
+const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+let selectedPart = null;
+let ws = null;
+let audioCtx = null;
+let oscillator = null;
+let gainNode = null;
+let currentMidi = -1;
+let wakeLock = null;
+
+function noteName(midi) {
+  if (midi < 0) return '---';
+  return NOTES[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+
+function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function selectPart(btn) {
+  document.querySelectorAll('.part-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  selectedPart = btn.dataset.part;
+  checkReady();
+}
+
+function checkReady() {
+  const code = document.getElementById('codeInput').value.trim();
+  const btn = document.getElementById('joinBtn');
+  if (code.length === 4 && selectedPart) {
+    btn.classList.add('ready');
+  } else {
+    btn.classList.remove('ready');
+  }
+}
+
+document.getElementById('codeInput').addEventListener('input', (e) => {
+  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  checkReady();
+});
+
+// Audio setup — must be called from a user gesture
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // iOS unlock: resume and play silent buffer
+  audioCtx.resume();
+  const silentBuf = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+  const src = audioCtx.createBufferSource();
+  src.buffer = silentBuf;
+  src.connect(audioCtx.destination);
+  src.start();
+
+  // Persistent oscillator -> gain -> destination
+  oscillator = audioCtx.createOscillator();
+  oscillator.type = 'triangle';
+  oscillator.frequency.value = 440;
+
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0; // Start silent
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+  oscillator.start();
+}
+
+function playNote(midi) {
+  if (!audioCtx || !oscillator) return;
+
+  if (midi < 0) {
+    // Silence — ramp gain down
+    if (currentMidi >= 0) {
+      gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.03);
+      currentMidi = -1;
+    }
+    return;
+  }
+
+  const freq = midiToFreq(midi);
+
+  if (currentMidi < 0) {
+    // Coming from silence — set frequency immediately, ramp gain up
+    oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.005);
+    gainNode.gain.setTargetAtTime(0.45, audioCtx.currentTime, 0.01);
+  } else {
+    // Changing notes — glide frequency quickly
+    oscillator.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.015);
+  }
+
+  currentMidi = midi;
+}
+
+function updateNoteDisplay(midi) {
+  const el = document.getElementById('noteDisplay');
+  if (midi < 0) {
+    el.textContent = '---';
+    el.className = 'current-note silent';
+  } else {
+    el.textContent = noteName(midi);
+    el.className = `current-note ${selectedPart}`;
+  }
+}
+
+// Screen Wake Lock
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+    }
+  } catch {}
+}
+
+function joinRoom() {
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  if (code.length !== 4 || !selectedPart) return;
+
+  // Init audio on this user tap (iOS requirement)
+  initAudio();
+
+  const errorEl = document.getElementById('error');
+  errorEl.textContent = '';
+
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ t: 'join', code, part: selectedPart }));
+  };
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.t === 'joined') {
+      // Switch to singing screen
+      document.getElementById('joinScreen').style.display = 'none';
+      document.getElementById('singScreen').style.display = '';
+      document.getElementById('partLabel').textContent = selectedPart;
+      document.getElementById('roomInfo').textContent = `Room: ${msg.code}`;
+      requestWakeLock();
+
+    } else if (msg.t === 'error') {
+      errorEl.textContent = msg.msg;
+
+    } else if (msg.t === 'n') {
+      // Note assignment — extract our part's note
+      const partKey = { soprano: 's', alto: 'a', tenor: 'e', bass: 'b' }[selectedPart];
+      const midi = msg[partKey];
+      playNote(midi);
+      updateNoteDisplay(midi);
+
+    } else if (msg.t === 'r') {
+      // Room state update
+      const c = msg.singers;
+      document.getElementById('singerCounts').textContent =
+        `S:${c.soprano||0}  A:${c.alto||0}  T:${c.tenor||0}  B:${c.bass||0}`;
+
+    } else if (msg.t === 'ended') {
+      document.getElementById('connStatus').textContent = 'Session ended by conductor';
+      document.getElementById('connStatus').className = 'conn-status disconnected';
+      gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.03);
+    }
+  };
+
+  ws.onclose = () => {
+    document.getElementById('connStatus').textContent = 'Disconnected';
+    document.getElementById('connStatus').className = 'conn-status disconnected';
+  };
+}
+
+function showJoin() {
+  if (ws) ws.close();
+  if (gainNode && audioCtx) gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.01);
+  currentMidi = -1;
+  document.getElementById('joinScreen').style.display = '';
+  document.getElementById('singScreen').style.display = 'none';
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
+}
+
+// Handle visibility change to re-request wake lock
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && ws && ws.readyState === 1) {
+    requestWakeLock();
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+});
+</script>
+</body>
+</html>

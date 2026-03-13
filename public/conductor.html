@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Singing Earring - Conductor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; padding: 20px; }
+  h1 { font-size: 1.5rem; margin-bottom: 10px; color: #e94560; }
+  .room-code { font-size: 3rem; font-weight: bold; letter-spacing: 0.3em; color: #0f3460; background: #e94560; padding: 10px 24px; border-radius: 12px; display: inline-block; margin: 10px 0; }
+  .section { background: #16213e; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  .section h2 { font-size: 1rem; color: #e94560; margin-bottom: 8px; }
+  .singers { display: flex; gap: 16px; flex-wrap: wrap; }
+  .singer-count { text-align: center; }
+  .singer-count .label { font-size: 0.8rem; color: #888; text-transform: uppercase; }
+  .singer-count .count { font-size: 2rem; font-weight: bold; }
+  .soprano .count { color: #ff6b9d; }
+  .alto .count { color: #c084fc; }
+  .tenor .count { color: #60a5fa; }
+  .bass .count { color: #34d399; }
+  .assignments { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+  .assign-box { padding: 8px 14px; border-radius: 8px; font-size: 1.1rem; font-weight: bold; }
+  .assign-box.soprano { background: rgba(255,107,157,0.2); color: #ff6b9d; }
+  .assign-box.alto { background: rgba(192,132,252,0.2); color: #c084fc; }
+  .assign-box.tenor { background: rgba(96,165,250,0.2); color: #60a5fa; }
+  .assign-box.bass { background: rgba(52,211,153,0.2); color: #34d399; }
+  .midi-select { background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 8px 12px; border-radius: 8px; font-size: 1rem; width: 100%; }
+  .midi-status { font-size: 0.85rem; color: #888; margin-top: 6px; }
+  .piano { display: flex; position: relative; height: 120px; margin-top: 10px; user-select: none; -webkit-user-select: none; }
+  .key { position: relative; border: 1px solid #333; border-radius: 0 0 6px 6px; cursor: pointer; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 6px; font-size: 0.65rem; color: #888; transition: background 0.05s; }
+  .key.white { background: #ddd; flex: 1; height: 120px; z-index: 1; }
+  .key.black { background: #222; width: 28px; height: 75px; margin-left: -14px; margin-right: -14px; z-index: 2; color: #666; }
+  .key.white.active { background: #e94560; }
+  .key.black.active { background: #c23152; }
+  .held-notes { font-size: 1.1rem; color: #ccc; margin-top: 8px; min-height: 1.5em; }
+  #status { font-size: 0.85rem; color: #888; margin-top: 10px; }
+  button { background: #e94560; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
+  button:hover { background: #c23152; }
+</style>
+</head>
+<body>
+
+<h1>Singing Earring - Conductor</h1>
+
+<div id="setup" class="section">
+  <button id="createBtn" onclick="createRoom()">Create Room</button>
+  <div id="status"></div>
+</div>
+
+<div id="roomInfo" class="section" style="display:none">
+  <h2>Room Code</h2>
+  <div class="room-code" id="roomCode"></div>
+  <div class="singers" id="singerCounts">
+    <div class="singer-count soprano"><div class="label">Soprano</div><div class="count" id="countS">0</div></div>
+    <div class="singer-count alto"><div class="label">Alto</div><div class="count" id="countA">0</div></div>
+    <div class="singer-count tenor"><div class="label">Tenor</div><div class="count" id="countT">0</div></div>
+    <div class="singer-count bass"><div class="label">Bass</div><div class="count" id="countB">0</div></div>
+  </div>
+</div>
+
+<div id="midiSection" class="section" style="display:none">
+  <h2>MIDI Input</h2>
+  <select id="midiSelect" class="midi-select"><option value="">No MIDI devices found</option></select>
+  <div class="midi-status" id="midiStatus">Requesting MIDI access...</div>
+</div>
+
+<div id="chordSection" class="section" style="display:none">
+  <h2>Current Chord</h2>
+  <div class="held-notes" id="heldNotes">No notes held</div>
+  <h2 style="margin-top:12px">Voice Assignments</h2>
+  <div class="assignments" id="assignments"></div>
+</div>
+
+<div id="keyboardSection" class="section" style="display:none">
+  <h2>Fallback Keyboard</h2>
+  <div class="piano" id="piano"></div>
+</div>
+
+<script>
+const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const PARTS = ['bass','tenor','alto','soprano'];
+// Range midpoints (MIDI note numbers)
+const RANGE_MID = { soprano: 72, alto: 69, tenor: 55, bass: 43 };
+// Singable ranges
+const RANGE = {
+  soprano: [60, 79],
+  alto:    [53, 72],
+  tenor:   [48, 67],
+  bass:    [40, 60],
+};
+
+let ws = null;
+let midiAccess = null;
+let currentInput = null;
+let heldNotes = new Set();
+
+function noteName(midi) {
+  return NOTES[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+
+function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function fitToRange(note, part) {
+  const [lo, hi] = RANGE[part];
+  while (note < lo) note += 12;
+  while (note > hi) note -= 12;
+  // If still out of range, clamp
+  if (note < lo) note = lo;
+  if (note > hi) note = hi;
+  return note;
+}
+
+function assignVoices(notes) {
+  // Returns { soprano, alto, tenor, bass } with MIDI note numbers, -1 = silence
+  if (notes.length === 0) return { soprano: -1, alto: -1, tenor: -1, bass: -1 };
+
+  const sorted = [...notes].sort((a, b) => a - b);
+
+  if (sorted.length >= 4) {
+    // Bottom-up assignment
+    return {
+      bass:    fitToRange(sorted[0], 'bass'),
+      tenor:   fitToRange(sorted[1], 'tenor'),
+      alto:    fitToRange(sorted[sorted.length - 2], 'alto'),
+      soprano: fitToRange(sorted[sorted.length - 1], 'soprano'),
+    };
+  }
+
+  // Fewer than 4 notes: assign each part to the closest note by range midpoint
+  const result = {};
+  for (const part of PARTS) {
+    let bestNote = sorted[0];
+    let bestDist = Infinity;
+    for (const n of sorted) {
+      // Compare in terms of pitch class distance to the range midpoint
+      const dist = Math.abs(n - RANGE_MID[part]);
+      // Also try octave transpositions
+      for (let oct = -2; oct <= 2; oct++) {
+        const transposed = n + oct * 12;
+        const d = Math.abs(transposed - RANGE_MID[part]);
+        if (d < bestDist) {
+          bestDist = d;
+          bestNote = transposed;
+        }
+      }
+    }
+    result[part] = fitToRange(bestNote, part);
+  }
+  return result;
+}
+
+function updateDisplay() {
+  const notes = [...heldNotes].sort((a, b) => a - b);
+  const heldEl = document.getElementById('heldNotes');
+  const assignEl = document.getElementById('assignments');
+
+  if (notes.length === 0) {
+    heldEl.textContent = 'No notes held';
+    assignEl.innerHTML = '';
+    return;
+  }
+
+  heldEl.textContent = notes.map(noteName).join(' - ');
+  const voices = assignVoices(notes);
+
+  assignEl.innerHTML = ['soprano','alto','tenor','bass'].map(p => {
+    const n = voices[p];
+    const label = n === -1 ? '---' : noteName(n);
+    return `<div class="assign-box ${p}">${p[0].toUpperCase()}: ${label}</div>`;
+  }).join('');
+
+  // Send over WebSocket
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({
+      t: 'n',
+      s: voices.soprano,
+      a: voices.alto,
+      e: voices.tenor,  // 'e' for tenor to avoid key collision with 't' (message type)
+      b: voices.bass,
+    }));
+  }
+
+  // Update piano key highlights
+  document.querySelectorAll('.key').forEach(k => {
+    const midi = parseInt(k.dataset.midi);
+    k.classList.toggle('active', heldNotes.has(midi));
+  });
+}
+
+function noteOn(midi) {
+  heldNotes.add(midi);
+  updateDisplay();
+}
+
+function noteOff(midi) {
+  heldNotes.delete(midi);
+  updateDisplay();
+}
+
+// WebSocket
+function createRoom() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}`);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ t: 'create' }));
+    document.getElementById('status').textContent = 'Connected';
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.t === 'created') {
+      document.getElementById('roomCode').textContent = msg.code;
+      document.getElementById('setup').style.display = 'none';
+      document.getElementById('roomInfo').style.display = '';
+      document.getElementById('midiSection').style.display = '';
+      document.getElementById('chordSection').style.display = '';
+      document.getElementById('keyboardSection').style.display = '';
+      initMIDI();
+    } else if (msg.t === 'r') {
+      document.getElementById('countS').textContent = msg.singers.soprano || 0;
+      document.getElementById('countA').textContent = msg.singers.alto || 0;
+      document.getElementById('countT').textContent = msg.singers.tenor || 0;
+      document.getElementById('countB').textContent = msg.singers.bass || 0;
+    }
+  };
+  ws.onclose = () => { document.getElementById('status').textContent = 'Disconnected'; };
+}
+
+// MIDI
+async function initMIDI() {
+  const statusEl = document.getElementById('midiStatus');
+  const selectEl = document.getElementById('midiSelect');
+  try {
+    midiAccess = await navigator.requestMIDIAccess();
+    statusEl.textContent = 'MIDI access granted';
+
+    function updateInputs() {
+      selectEl.innerHTML = '';
+      const inputs = [...midiAccess.inputs.values()];
+      if (inputs.length === 0) {
+        selectEl.innerHTML = '<option value="">No MIDI devices — use keyboard below</option>';
+        statusEl.textContent = 'No MIDI devices found. Use the on-screen keyboard.';
+        return;
+      }
+      for (const input of inputs) {
+        const opt = document.createElement('option');
+        opt.value = input.id;
+        opt.textContent = input.name;
+        selectEl.appendChild(opt);
+      }
+      selectInput(inputs[0].id);
+    }
+
+    selectEl.addEventListener('change', (e) => selectInput(e.target.value));
+    midiAccess.onstatechange = updateInputs;
+    updateInputs();
+  } catch (err) {
+    statusEl.textContent = 'MIDI not available — use the on-screen keyboard';
+  }
+}
+
+function selectInput(id) {
+  if (currentInput) currentInput.onmidimessage = null;
+  currentInput = midiAccess.inputs.get(id);
+  if (currentInput) {
+    currentInput.onmidimessage = onMIDIMessage;
+    document.getElementById('midiStatus').textContent = `Listening: ${currentInput.name}`;
+  }
+}
+
+function onMIDIMessage(e) {
+  const [status, note, velocity] = e.data;
+  const cmd = status & 0xf0;
+  if (cmd === 0x90 && velocity > 0) noteOn(note);
+  else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) noteOff(note);
+}
+
+// Fallback on-screen keyboard (C3 to C5, 2 octaves)
+function buildPiano() {
+  const piano = document.getElementById('piano');
+  const startMidi = 48; // C3
+  const endMidi = 72;   // C5
+  const blackKeys = new Set([1,3,6,8,10]); // semitone offsets that are black
+
+  for (let midi = startMidi; midi <= endMidi; midi++) {
+    const semitone = midi % 12;
+    const isBlack = blackKeys.has(semitone);
+    const key = document.createElement('div');
+    key.className = `key ${isBlack ? 'black' : 'white'}`;
+    key.dataset.midi = midi;
+    if (!isBlack) key.textContent = NOTES[semitone] + (Math.floor(midi / 12) - 1);
+
+    // Touch/mouse events
+    const down = (e) => { e.preventDefault(); noteOn(midi); };
+    const up = (e) => { e.preventDefault(); noteOff(midi); };
+    key.addEventListener('mousedown', down);
+    key.addEventListener('mouseup', up);
+    key.addEventListener('mouseleave', up);
+    key.addEventListener('touchstart', down, { passive: false });
+    key.addEventListener('touchend', up, { passive: false });
+
+    piano.appendChild(key);
+  }
+}
+
+buildPiano();
+</script>
+</body>
+</html>
