@@ -119,6 +119,7 @@ function fitToRange(note, part) {
 
 function assignVoices(notes) {
   // Returns { soprano, alto, tenor, bass } with MIDI note numbers, -1 = silence
+  // INVARIANT: every held note gets at least one part assigned
   if (notes.length === 0) return { soprano: -1, alto: -1, tenor: -1, bass: -1 };
 
   const sorted = [...notes].sort((a, b) => a - b);
@@ -133,31 +134,22 @@ function assignVoices(notes) {
 
   const result = { soprano: -1, alto: -1, tenor: -1, bass: -1 };
 
-  if (sorted.length >= partsByRange.length) {
-    // Enough notes for all active parts — assign bottom-up
-    for (let i = 0; i < partsByRange.length; i++) {
-      // Spread notes evenly: lowest parts get lowest notes, highest get highest
-      const noteIdx = Math.round(i * (sorted.length - 1) / (partsByRange.length - 1 || 1));
-      result[partsByRange[i]] = fitToRange(sorted[noteIdx], partsByRange[i]);
+  // Distance from a part's range midpoint to a note (considering octave transposition)
+  function partNoteDist(part, note) {
+    let best = Infinity;
+    for (let oct = -2; oct <= 2; oct++) {
+      best = Math.min(best, Math.abs((note + oct * 12) - RANGE_MID[part]));
     }
-  } else {
-    // Fewer notes than active parts — every held note must have at least
-    // one part assigned, then remaining parts go to their closest note.
+    return best;
+  }
 
-    // Helper: distance from a part's range midpoint to a note (best octave)
-    function partNoteDist(part, note) {
-      let best = Infinity;
-      for (let oct = -2; oct <= 2; oct++) {
-        best = Math.min(best, Math.abs((note + oct * 12) - RANGE_MID[part]));
-      }
-      return best;
-    }
+  const notePartMap = new Map(); // note index → array of assigned parts
+  for (let ni = 0; ni < sorted.length; ni++) notePartMap.set(ni, []);
 
-    // Step 1: For each note, find the closest unassigned part → guarantees coverage
+  if (sorted.length <= partsByRange.length) {
+    // Fewer (or equal) notes than parts:
+    // Step 1: Each note gets its closest unassigned part (guarantees every note is covered)
     const unassigned = new Set(partsByRange);
-    const notePartMap = new Map(); // note index → array of assigned parts
-    for (let ni = 0; ni < sorted.length; ni++) notePartMap.set(ni, []);
-
     for (let ni = 0; ni < sorted.length; ni++) {
       let bestPart = null, bestDist = Infinity;
       for (const part of unassigned) {
@@ -169,7 +161,6 @@ function assignVoices(notes) {
         unassigned.delete(bestPart);
       }
     }
-
     // Step 2: Remaining parts go to their closest note
     for (const part of unassigned) {
       let bestNi = 0, bestDist = Infinity;
@@ -179,12 +170,47 @@ function assignVoices(notes) {
       }
       notePartMap.get(bestNi).push(part);
     }
-
-    // Step 3: Write results
-    for (let ni = 0; ni < sorted.length; ni++) {
-      for (const part of notePartMap.get(ni)) {
-        result[part] = fitToRange(sorted[ni], part);
+  } else {
+    // More notes than parts:
+    // Step 1: Each part goes to its closest note
+    const assignedParts = new Set();
+    for (const part of partsByRange) {
+      let bestNi = 0, bestDist = Infinity;
+      for (let ni = 0; ni < sorted.length; ni++) {
+        const d = partNoteDist(part, sorted[ni]);
+        if (d < bestDist) { bestDist = d; bestNi = ni; }
       }
+      notePartMap.get(bestNi).push(part);
+    }
+    // Step 2: Ensure every note has at least one part — steal from overpopulated notes
+    for (let ni = 0; ni < sorted.length; ni++) {
+      if (notePartMap.get(ni).length > 0) continue;
+      // Find the note with the most parts to steal from
+      let donorNi = -1, maxParts = 0;
+      for (let di = 0; di < sorted.length; di++) {
+        if (notePartMap.get(di).length > maxParts) {
+          maxParts = notePartMap.get(di).length;
+          donorNi = di;
+        }
+      }
+      if (donorNi >= 0 && maxParts > 1) {
+        // Steal the part that's closest to the uncovered note
+        let bestIdx = 0, bestDist = Infinity;
+        const donorParts = notePartMap.get(donorNi);
+        for (let pi = 0; pi < donorParts.length; pi++) {
+          const d = partNoteDist(donorParts[pi], sorted[ni]);
+          if (d < bestDist) { bestDist = d; bestIdx = pi; }
+        }
+        const stolen = donorParts.splice(bestIdx, 1)[0];
+        notePartMap.get(ni).push(stolen);
+      }
+    }
+  }
+
+  // Write results
+  for (let ni = 0; ni < sorted.length; ni++) {
+    for (const part of notePartMap.get(ni)) {
+      result[part] = fitToRange(sorted[ni], part);
     }
   }
 
