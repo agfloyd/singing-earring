@@ -35,6 +35,7 @@
   button:hover { background: #c23152; }
   /* Indicator controls */
   .controls-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .sustain-toggle { padding: 6px 14px; border-radius: 8px; background: #222; font-size: 0.85rem; cursor: pointer; color: #888; transition: all 0.15s; }
   .rub-indicator { padding: 6px 14px; border-radius: 8px; background: #222; font-size: 0.85rem; cursor: pointer; color: #888; transition: all 0.15s; }
   .syl-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 6px; background: #222; cursor: pointer; font-size: 0.85rem; color: #888; transition: all 0.15s; border: 2px solid transparent; }
   .syl-btn.active { background: #e94560; color: white; border-color: #e94560; }
@@ -94,6 +95,7 @@
     </div>
   </div>
   <div class="controls-row">
+    <div class="sustain-toggle" id="sustainToggle" onclick="toggleSustain()">Sustain: Off <span class="syl-key">Space</span></div>
     <div class="rub-indicator" id="rubIndicator" onclick="toggleRub()">
       <span class="syl-key">9</span> Rub: Off
     </div>
@@ -124,6 +126,11 @@ let midiAccess = null;
 let currentInput = null;
 let heldNotes = new Set();
 let singerCounts = { soprano: 0, alto: 0, tenor: 0, bass: 0 };
+
+// Sustain mode
+let sustainMode = false;
+let sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
+let modifiers = { shift: false, ctrl: false, alt: false };
 
 // Rub hands: 4-state toggle
 let rubState = 0;
@@ -243,8 +250,81 @@ function updateDisplay() {
   });
 }
 
-function noteOn(midi) { heldNotes.add(midi); updateDisplay(); }
-function noteOff(midi) { heldNotes.delete(midi); updateDisplay(); }
+function noteOn(midi) {
+  if (sustainMode) {
+    const part = getTargetPart();
+    sustainedNotes[part] = midi;
+    updateSustainDisplay();
+  } else {
+    heldNotes.add(midi);
+    updateDisplay();
+  }
+}
+function noteOff(midi) {
+  if (sustainMode) return; // no-op in sustain mode
+  heldNotes.delete(midi);
+  updateDisplay();
+}
+
+function getTargetPart() {
+  if (modifiers.alt) return 'soprano';
+  if (modifiers.ctrl) return 'alto';
+  if (modifiers.shift) return 'tenor';
+  return 'bass';
+}
+
+function updateSustainDisplay() {
+  const voices = {
+    soprano: sustainedNotes.soprano >= 0 ? fitToRange(sustainedNotes.soprano, 'soprano') : -1,
+    alto: sustainedNotes.alto >= 0 ? fitToRange(sustainedNotes.alto, 'alto') : -1,
+    tenor: sustainedNotes.tenor >= 0 ? fitToRange(sustainedNotes.tenor, 'tenor') : -1,
+    bass: sustainedNotes.bass >= 0 ? fitToRange(sustainedNotes.bass, 'bass') : -1,
+  };
+
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ t: 'n', s: voices.soprano, a: voices.alto, e: voices.tenor, b: voices.bass }));
+  }
+
+  document.querySelectorAll('.key').forEach(k => {
+    const midi = parseInt(k.dataset.midi);
+    const partsOnKey = [];
+    for (const part of ['soprano','alto','tenor','bass']) {
+      if (voices[part] === midi) {
+        partsOnKey.push(part);
+      }
+    }
+    if (partsOnKey.length === 0) {
+      k.style.background = '';
+    } else if (partsOnKey.length === 1) {
+      k.style.background = PART_COLORS[partsOnKey[0]];
+    } else {
+      const stops = partsOnKey.map((p, i) => {
+        const pct1 = (i / partsOnKey.length * 100).toFixed(1);
+        const pct2 = ((i + 1) / partsOnKey.length * 100).toFixed(1);
+        return `${PART_COLORS[p]} ${pct1}%, ${PART_COLORS[p]} ${pct2}%`;
+      }).join(', ');
+      k.style.background = `linear-gradient(to right, ${stops})`;
+    }
+  });
+}
+
+function toggleSustain() {
+  sustainMode = !sustainMode;
+  const el = document.getElementById('sustainToggle');
+  el.innerHTML = (sustainMode ? 'Sustain: On' : 'Sustain: Off') + ' <span class="syl-key">Space</span>';
+  el.style.background = sustainMode ? '#e94560' : '#222';
+  el.style.color = sustainMode ? '#fff' : '#888';
+
+  if (sustainMode) {
+    heldNotes.clear();
+    heldKeyboard.clear();
+    sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
+    updateSustainDisplay();
+  } else {
+    sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
+    updateDisplay();
+  }
+}
 
 // --- Rub hands toggle ---
 function toggleRub() {
@@ -457,6 +537,9 @@ function buildPiano() {
 
     key.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      modifiers.shift = e.shiftKey;
+      modifiers.ctrl = e.ctrlKey;
+      modifiers.alt = e.altKey;
       key.setPointerCapture(e.pointerId);
       pointerToMidi.set(e.pointerId, midi);
       noteOn(midi);
@@ -556,33 +639,62 @@ const KEY_TO_MIDI = {
   '\\': 72,                     // C5
 };
 
+// Map physical key codes to KEY_TO_MIDI keys (needed when modifiers alter e.key)
+const CODE_TO_KEY = {
+  'KeyA': 'a', 'KeyS': 's', 'KeyD': 'd', 'KeyF': 'f',
+  'KeyQ': 'q', 'KeyW': 'w', 'KeyE': 'e', 'KeyR': 'r', 'KeyT': 't',
+  'KeyY': 'y', 'KeyU': 'u', 'KeyI': 'i', 'KeyO': 'o', 'KeyP': 'p',
+  'BracketLeft': '[', 'BracketRight': ']', 'Backslash': '\\',
+  'Digit3': '3', 'Digit4': '4', 'Digit5': '5', 'Digit7': '7', 'Digit8': '8',
+  'Digit0': '0', 'Minus': '-', 'Equal': '=',
+};
+
 const heldKeyboard = new Set();
 
 document.addEventListener('keydown', (e) => {
+  modifiers.shift = e.shiftKey;
+  modifiers.ctrl = e.ctrlKey;
+  modifiers.alt = e.altKey;
+
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
   if (e.repeat) return;
 
-  // Special toggle keys
-  if (e.key === '9') { e.preventDefault(); toggleRub(); return; }
-  if (e.key === '`') { e.preventDefault(); setSyllable(0); return; }
-  if (e.key === '1') { e.preventDefault(); setSyllable(1); return; }
-  if (e.key === '2') { e.preventDefault(); setSyllable(2); return; }
-  if (e.key === '6') { e.preventDefault(); setSyllable(3); return; }
-  if (e.key === ',') { e.preventDefault(); adjustBpm(-5); return; }
-  if (e.key === '.') { e.preventDefault(); adjustBpm(5); return; }
+  // Special toggle keys (only when no modifier held)
+  if (!e.shiftKey && !e.ctrlKey && !e.altKey) {
+    if (e.key === '9') { e.preventDefault(); toggleRub(); return; }
+    if (e.key === '`') { e.preventDefault(); setSyllable(0); return; }
+    if (e.key === '1') { e.preventDefault(); setSyllable(1); return; }
+    if (e.key === '2') { e.preventDefault(); setSyllable(2); return; }
+    if (e.key === '6') { e.preventDefault(); setSyllable(3); return; }
+    if (e.key === ',') { e.preventDefault(); adjustBpm(-5); return; }
+    if (e.key === '.') { e.preventDefault(); adjustBpm(5); return; }
+    if (e.key === ' ') { e.preventDefault(); toggleSustain(); return; }
+  }
 
-  const midi = KEY_TO_MIDI[e.key];
-  if (midi !== undefined && !heldKeyboard.has(e.key)) {
-    e.preventDefault();
-    heldKeyboard.add(e.key);
-    noteOn(midi);
+  // Use e.code to reliably get the physical key regardless of modifiers
+  const key = e.key.toLowerCase();
+  const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];
+  if (midi !== undefined) {
+    if (sustainMode) {
+      e.preventDefault();
+      noteOn(midi);
+    } else if (!heldKeyboard.has(e.code)) {
+      e.preventDefault();
+      heldKeyboard.add(e.code);
+      noteOn(midi);
+    }
   }
 });
 
 document.addEventListener('keyup', (e) => {
-  const midi = KEY_TO_MIDI[e.key];
+  modifiers.shift = e.shiftKey;
+  modifiers.ctrl = e.ctrlKey;
+  modifiers.alt = e.altKey;
+
+  const key = e.key.toLowerCase();
+  const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];
   if (midi !== undefined) {
-    heldKeyboard.delete(e.key);
+    heldKeyboard.delete(e.code);
     noteOff(midi);
   }
 });

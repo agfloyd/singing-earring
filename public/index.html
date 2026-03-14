@@ -440,7 +440,7 @@ function connectWebSocket(code, isReconnect) {
     if (msg.t === 'joined') {
       roomCode = msg.code;
       document.getElementById('joinScreen').style.display = 'none';
-      document.getElementById('singScreen').style.display = '';
+      document.getElementById('singScreen').style.display = 'block';
       updatePartDisplay();
       buildMiniPiano();
       document.getElementById('roomInfo').textContent = `Room: ${msg.code}`;
