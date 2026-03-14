@@ -40,7 +40,17 @@
   #status { font-size: 0.85rem; color: #888; margin-top: 10px; }
   button { background: #e94560; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
   button:hover { background: #c23152; }
-  .special-indicator { font-size: 0.85rem; color: #fbbf24; margin-top: 6px; min-height: 1.2em; }
+  /* Indicator controls */
+  .controls-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .rub-indicator { padding: 6px 14px; border-radius: 8px; background: #222; font-size: 0.85rem; cursor: pointer; color: #888; transition: all 0.15s; }
+  .syl-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 6px; background: #222; cursor: pointer; font-size: 0.85rem; color: #888; transition: all 0.15s; border: 2px solid transparent; }
+  .syl-btn.active { background: #e94560; color: white; border-color: #e94560; }
+  .syl-key { font-size: 0.6rem; color: rgba(255,255,255,0.35); }
+  .syl-input { background: transparent; border: none; color: inherit; font: inherit; width: 3.5em; text-align: center; outline: none; padding: 0; }
+  .syl-input:focus { border-bottom: 1px solid currentColor; }
+  .bpm-control { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #888; }
+  .bpm-control button { padding: 4px 10px; font-size: 0.85rem; border-radius: 4px; }
+  .bpm-input { background: transparent; border: none; border-bottom: 1px solid #555; color: #eee; font: inherit; width: 3em; text-align: center; outline: none; }
 </style>
 </head>
 <body>
@@ -74,7 +84,35 @@
   <div class="held-notes" id="heldNotes">No notes held</div>
   <h2 style="margin-top:12px">Voice Assignments</h2>
   <div class="assignments" id="assignments"></div>
-  <div class="special-indicator" id="specialIndicator"></div>
+</div>
+
+<div id="controlsSection" class="section" style="display:none">
+  <h2>Controls</h2>
+  <div class="controls-row">
+    <div class="syl-btn active" data-idx="0" onclick="setSyllable(0)">
+      <span class="syl-key">~</span><input class="syl-input" type="text" maxlength="6" value="Aah" data-idx="0">
+    </div>
+    <div class="syl-btn" data-idx="1" onclick="setSyllable(1)">
+      <span class="syl-key">1</span><input class="syl-input" type="text" maxlength="6" value="Ooo" data-idx="1">
+    </div>
+    <div class="syl-btn" data-idx="2" onclick="setSyllable(2)">
+      <span class="syl-key">2</span><input class="syl-input" type="text" maxlength="6" value="Mmm" data-idx="2">
+    </div>
+    <div class="syl-btn" data-idx="3" onclick="setSyllable(3)">
+      <span class="syl-key">6</span><input class="syl-input" type="text" maxlength="6" value="Bum" data-idx="3">
+    </div>
+    <div class="bpm-control" id="bpmControl" style="display:none">
+      <button onclick="adjustBpm(-5)">&lt;</button>
+      <span>BPM = </span><input class="bpm-input" id="bpmInput" type="text" value="100">
+      <button onclick="adjustBpm(5)">&gt;</button>
+      <span style="font-size:0.6rem;color:#555">,/.</span>
+    </div>
+  </div>
+  <div class="controls-row">
+    <div class="rub-indicator" id="rubIndicator" onclick="toggleRub()">
+      <span class="syl-key">9</span> Rub: Off
+    </div>
+  </div>
 </div>
 
 <div id="keyboardSection" class="section" style="display:none">
@@ -89,9 +127,7 @@
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PARTS = ['bass','tenor','alto','soprano'];
 const PART_COLORS = { soprano: '#ff6b9d', alto: '#c084fc', tenor: '#60a5fa', bass: '#34d399' };
-// Range midpoints (MIDI note numbers)
 const RANGE_MID = { soprano: 72, alto: 69, tenor: 55, bass: 43 };
-// Singable ranges
 const RANGE = {
   soprano: [60, 79],
   alto:    [53, 72],
@@ -103,15 +139,29 @@ let ws = null;
 let midiAccess = null;
 let currentInput = null;
 let heldNotes = new Set();
-// Track which parts have singers — updated from server room state messages
 let singerCounts = { soprano: 0, alto: 0, tenor: 0, bass: 0 };
+
+// Rub hands: 4-state toggle
+let rubState = 0;
+const RUB_STATES = [
+  { label: 'Off', parts: [] },
+  { label: 'All', parts: ['soprano', 'alto', 'tenor', 'bass'] },
+  { label: 'T+B', parts: ['tenor', 'bass'] },
+  { label: 'A+S', parts: ['alto', 'soprano'] },
+];
+
+// Syllable system
+let activeSyllable = 0;
+const syllables = [
+  { text: 'Aah', pulse: false },
+  { text: 'Ooo', pulse: false },
+  { text: 'Mmm', pulse: false },
+  { text: 'Bum', pulse: true },
+];
+let pulseBpm = 100;
 
 function noteName(midi) {
   return NOTES[midi % 12] + (Math.floor(midi / 12) - 1);
-}
-
-function midiToFreq(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
 function fitToRange(note, part) {
@@ -123,6 +173,7 @@ function fitToRange(note, part) {
   return note;
 }
 
+// Voice assignment: distribute parts evenly across notes, lower parts on lower notes
 function assignVoices(notes) {
   if (notes.length === 0) return { soprano: -1, alto: -1, tenor: -1, bass: -1 };
 
@@ -130,99 +181,31 @@ function assignVoices(notes) {
   const activeParts = PARTS.filter(p => (singerCounts[p] || 0) > 0);
   const partsToAssign = activeParts.length > 0 ? activeParts : PARTS;
   const partsByRange = [...partsToAssign].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
-
   const result = { soprano: -1, alto: -1, tenor: -1, bass: -1 };
+  const n = sorted.length, p = partsByRange.length;
 
-  function partNoteDist(part, note) {
-    let best = Infinity;
-    for (let oct = -2; oct <= 2; oct++) {
-      best = Math.min(best, Math.abs((note + oct * 12) - RANGE_MID[part]));
-    }
-    return best;
-  }
-
-  const notePartMap = new Map();
-  for (let ni = 0; ni < sorted.length; ni++) notePartMap.set(ni, []);
-
-  if (sorted.length <= partsByRange.length) {
-    const unassigned = new Set(partsByRange);
-    for (let ni = 0; ni < sorted.length; ni++) {
-      let bestPart = null, bestDist = Infinity;
-      for (const part of unassigned) {
-        const d = partNoteDist(part, sorted[ni]);
-        if (d < bestDist) { bestDist = d; bestPart = part; }
-      }
-      if (bestPart) {
-        notePartMap.get(ni).push(bestPart);
-        unassigned.delete(bestPart);
-      }
-    }
-    for (const part of unassigned) {
-      let bestNi = 0, bestDist = Infinity;
-      for (let ni = 0; ni < sorted.length; ni++) {
-        const d = partNoteDist(part, sorted[ni]);
-        if (d < bestDist) { bestDist = d; bestNi = ni; }
-      }
-      notePartMap.get(bestNi).push(part);
+  if (n >= p) {
+    // More notes than parts: spread parts proportionally across notes
+    for (let pi = 0; pi < p; pi++) {
+      const ni = Math.round(pi * (n - 1) / (p - 1 || 1));
+      result[partsByRange[pi]] = fitToRange(sorted[ni], partsByRange[pi]);
     }
   } else {
-    for (const part of partsByRange) {
-      let bestNi = 0, bestDist = Infinity;
-      for (let ni = 0; ni < sorted.length; ni++) {
-        const d = partNoteDist(part, sorted[ni]);
-        if (d < bestDist) { bestDist = d; bestNi = ni; }
+    // More parts than notes: distribute evenly, lower parts on lower notes
+    const base = Math.floor(p / n);
+    const remainder = p % n;
+    let partIdx = 0;
+    for (let ni = 0; ni < n; ni++) {
+      const count = base + (ni < remainder ? 1 : 0);
+      for (let j = 0; j < count; j++) {
+        const part = partsByRange[partIdx];
+        result[part] = fitToRange(sorted[ni], part);
+        partIdx++;
       }
-      notePartMap.get(bestNi).push(part);
-    }
-    for (let ni = 0; ni < sorted.length; ni++) {
-      if (notePartMap.get(ni).length > 0) continue;
-      let donorNi = -1, maxParts = 0;
-      for (let di = 0; di < sorted.length; di++) {
-        if (notePartMap.get(di).length > maxParts) {
-          maxParts = notePartMap.get(di).length;
-          donorNi = di;
-        }
-      }
-      if (donorNi >= 0 && maxParts > 1) {
-        let bestIdx = 0, bestDist = Infinity;
-        const donorParts = notePartMap.get(donorNi);
-        for (let pi = 0; pi < donorParts.length; pi++) {
-          const d = partNoteDist(donorParts[pi], sorted[ni]);
-          if (d < bestDist) { bestDist = d; bestIdx = pi; }
-        }
-        const stolen = donorParts.splice(bestIdx, 1)[0];
-        notePartMap.get(ni).push(stolen);
-      }
-    }
-  }
-
-  for (let ni = 0; ni < sorted.length; ni++) {
-    for (const part of notePartMap.get(ni)) {
-      result[part] = fitToRange(sorted[ni], part);
     }
   }
 
   return result;
-}
-
-// Find the worst-fitting active part for hissing
-function worstFitPart() {
-  const activeParts = PARTS.filter(p => (singerCounts[p] || 0) > 0);
-  if (activeParts.length === 0) return PARTS[Math.floor(Math.random() * PARTS.length)];
-  const notes = [...heldNotes];
-  if (notes.length === 0) return activeParts[Math.floor(Math.random() * activeParts.length)];
-
-  let worstPart = activeParts[0], worstDist = -1;
-  for (const part of activeParts) {
-    let minDist = Infinity;
-    for (const note of notes) {
-      for (let oct = -2; oct <= 2; oct++) {
-        minDist = Math.min(minDist, Math.abs((note + oct * 12) - RANGE_MID[part]));
-      }
-    }
-    if (minDist > worstDist) { worstDist = minDist; worstPart = part; }
-  }
-  return worstPart;
 }
 
 function updateDisplay() {
@@ -236,10 +219,7 @@ function updateDisplay() {
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ t: 'n', s: -1, a: -1, e: -1, b: -1 }));
     }
-    // Clear piano highlights
-    document.querySelectorAll('.key').forEach(k => {
-      k.style.background = '';
-    });
+    document.querySelectorAll('.key').forEach(k => { k.style.background = ''; });
     return;
   }
 
@@ -266,13 +246,8 @@ function updateDisplay() {
   document.querySelectorAll('.key').forEach(k => {
     const midi = parseInt(k.dataset.midi);
     const isBlack = k.classList.contains('black');
+    if (!heldNotes.has(midi)) { k.style.background = ''; return; }
 
-    if (!heldNotes.has(midi)) {
-      k.style.background = '';
-      return;
-    }
-
-    // Find all parts assigned to a note with the same pitch class as this key
     const partsOnKey = [];
     for (const part of ['soprano','alto','tenor','bass']) {
       if (voices[part] >= 0 && voices[part] % 12 === midi % 12) {
@@ -281,12 +256,10 @@ function updateDisplay() {
     }
 
     if (partsOnKey.length === 0) {
-      // Held but no part matched — fallback
       k.style.background = isBlack ? '#c23152' : '#e94560';
     } else if (partsOnKey.length === 1) {
       k.style.background = PART_COLORS[partsOnKey[0]];
     } else {
-      // Multi-color gradient stripes
       const stops = partsOnKey.map((p, i) => {
         const pct1 = (i / partsOnKey.length * 100).toFixed(1);
         const pct2 = ((i + 1) / partsOnKey.length * 100).toFixed(1);
@@ -297,45 +270,90 @@ function updateDisplay() {
   });
 }
 
-function noteOn(midi) {
-  heldNotes.add(midi);
-  updateDisplay();
-}
+function noteOn(midi) { heldNotes.add(midi); updateDisplay(); }
+function noteOff(midi) { heldNotes.delete(midi); updateDisplay(); }
 
-function noteOff(midi) {
-  heldNotes.delete(midi);
-  updateDisplay();
-}
-
-// Special triggers
-let rubActive = false;
-let hissActive = false;
-let hissPart = null;
-
-function sendRub(on) {
-  rubActive = on;
-  const el = document.getElementById('specialIndicator');
-  el.textContent = on ? 'RUBBING HANDS active' : '';
+// --- Rub hands toggle ---
+function toggleRub() {
+  rubState = (rubState + 1) % 4;
+  updateIndicators();
   if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ t: 'rub', on }));
+    ws.send(JSON.stringify({ t: 'rub', parts: RUB_STATES[rubState].parts }));
   }
 }
 
-function sendHiss(on) {
-  hissActive = on;
-  const el = document.getElementById('specialIndicator');
-  if (on) {
-    hissPart = worstFitPart();
-    el.textContent = `HISSING: ${hissPart.toUpperCase()}`;
-    el.style.color = PART_COLORS[hissPart];
+// --- Syllable system ---
+function setSyllable(index) {
+  activeSyllable = index;
+  updateIndicators();
+  sendSyllable();
+}
+
+function sendSyllable() {
+  const syl = syllables[activeSyllable];
+  const msg = { t: 'syl', text: syl.text };
+  if (syl.pulse) { msg.pulse = true; msg.bpm = pulseBpm; }
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+}
+
+function adjustBpm(delta) {
+  pulseBpm = Math.max(30, Math.min(300, pulseBpm + delta));
+  document.getElementById('bpmInput').value = pulseBpm;
+  updateIndicators();
+  if (syllables[activeSyllable].pulse) sendSyllable();
+}
+
+function updateIndicators() {
+  // Rub indicator
+  const rubEl = document.getElementById('rubIndicator');
+  const rs = RUB_STATES[rubState];
+  if (rubState === 0) {
+    rubEl.style.background = '#222';
+    rubEl.style.color = '#888';
+    rubEl.innerHTML = '<span class="syl-key">9</span> Rub: Off';
   } else {
-    el.textContent = '';
-    el.style.color = '';
+    const colors = rs.parts.map(p => PART_COLORS[p]);
+    if (colors.length <= 2) {
+      const stops = colors.map((c, i) => `${c} ${i/colors.length*100}%, ${c} ${(i+1)/colors.length*100}%`).join(',');
+      rubEl.style.background = `linear-gradient(to right, ${stops})`;
+    } else {
+      const stops = colors.map((c, i) => `${c} ${i/colors.length*100}%, ${c} ${(i+1)/colors.length*100}%`).join(',');
+      rubEl.style.background = `linear-gradient(to right, ${stops})`;
+    }
+    rubEl.style.color = '#fff';
+    rubEl.innerHTML = `<span class="syl-key" style="color:rgba(0,0,0,0.4)">9</span> Rub: ${rs.label}`;
   }
-  if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ t: 'hiss', part: hissPart, on }));
-  }
+
+  // Syllable buttons
+  document.querySelectorAll('.syl-btn').forEach(btn => {
+    const idx = parseInt(btn.dataset.idx);
+    btn.classList.toggle('active', idx === activeSyllable);
+  });
+
+  // BPM control visibility
+  document.getElementById('bpmControl').style.display = syllables[activeSyllable].pulse ? 'flex' : 'none';
 }
+
+// Handle syllable text editing
+document.querySelectorAll('.syl-input').forEach(input => {
+  input.addEventListener('input', (e) => {
+    const idx = parseInt(e.target.dataset.idx);
+    syllables[idx].text = e.target.value || '';
+    if (idx === activeSyllable) sendSyllable();
+  });
+  // Don't let clicking the input trigger setSyllable via the parent onclick
+  input.addEventListener('click', (e) => e.stopPropagation());
+});
+
+// Handle BPM input editing
+document.getElementById('bpmInput').addEventListener('change', (e) => {
+  const val = parseInt(e.target.value);
+  if (!isNaN(val)) {
+    pulseBpm = Math.max(30, Math.min(300, val));
+    e.target.value = pulseBpm;
+    if (syllables[activeSyllable].pulse) sendSyllable();
+  }
+});
 
 // WebSocket
 function createRoom() {
@@ -353,9 +371,13 @@ function createRoom() {
       document.getElementById('roomInfo').style.display = '';
       document.getElementById('midiSection').style.display = '';
       document.getElementById('chordSection').style.display = '';
+      document.getElementById('controlsSection').style.display = '';
       document.getElementById('keyboardSection').style.display = '';
       initMIDI();
       buildRangeIndicators();
+      updateIndicators();
+      // Send initial syllable state
+      sendSyllable();
     } else if (msg.t === 'r') {
       singerCounts = msg.singers;
       document.getElementById('countS').textContent = singerCounts.soprano || 0;
@@ -368,7 +390,6 @@ function createRoom() {
   ws.onclose = () => { document.getElementById('status').textContent = 'Disconnected'; };
 }
 
-// Auto-create room in test mode
 if (new URLSearchParams(location.search).has('test')) {
   createRoom();
 }
@@ -422,7 +443,7 @@ function onMIDIMessage(e) {
   else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) noteOff(note);
 }
 
-// Fallback on-screen keyboard (C3 to C5, 2 octaves)
+// Fallback on-screen keyboard (C3 to C5)
 const pointerToMidi = new Map();
 
 function buildPiano() {
@@ -441,11 +462,12 @@ function buildPiano() {
     const nameLabel = document.createTextNode(isBlack ? '' : NOTES[semitone] + (Math.floor(midi / 12) - 1));
     key.appendChild(nameLabel);
 
+    // Show keyboard shortcut if mapped
     const bindKey = Object.entries(KEY_TO_MIDI).find(([k, m]) => m === midi);
     if (bindKey) {
       const bindEl = document.createElement('span');
       bindEl.className = 'keybind';
-      bindEl.textContent = bindKey[0].toUpperCase();
+      bindEl.textContent = bindKey[0] === '\\' ? '\\' : bindKey[0].toUpperCase();
       key.appendChild(bindEl);
     }
 
@@ -469,14 +491,12 @@ function buildPiano() {
   }
 }
 
-// Range indicators — stacked horizontal lines showing each part's vocal range
-// Bass on bottom, tenor, alto, soprano on top
+// Range indicators
 function buildRangeIndicators() {
   const container = document.getElementById('rangeIndicators');
   container.innerHTML = '';
   const pianoStart = 48, pianoEnd = 72;
 
-  // White keys drive the piano layout (flex:1 each)
   const blackSet = new Set([1,3,6,8,10]);
   const whitePositions = {};
   let whiteIdx = 0;
@@ -488,33 +508,24 @@ function buildRangeIndicators() {
   }
   const totalWhite = whiteIdx;
 
-  // Left edge of a key as percentage
   function midiToLeftPct(midi) {
     const clamped = Math.max(pianoStart, Math.min(pianoEnd, midi));
-    if (whitePositions[clamped] !== undefined) {
-      return whitePositions[clamped] / totalWhite * 100;
-    }
+    if (whitePositions[clamped] !== undefined) return whitePositions[clamped] / totalWhite * 100;
     const lower = clamped - 1, upper = clamped + 1;
-    if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined) {
+    if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined)
       return (whitePositions[lower] + whitePositions[upper]) / 2 / totalWhite * 100;
-    }
     return (clamped - pianoStart) / (pianoEnd - pianoStart) * 100;
   }
 
-  // Right edge of a key as percentage
   function midiToRightPct(midi) {
     const clamped = Math.max(pianoStart, Math.min(pianoEnd, midi));
-    if (whitePositions[clamped] !== undefined) {
-      return (whitePositions[clamped] + 1) / totalWhite * 100;
-    }
+    if (whitePositions[clamped] !== undefined) return (whitePositions[clamped] + 1) / totalWhite * 100;
     const lower = clamped - 1, upper = clamped + 1;
-    if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined) {
+    if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined)
       return ((whitePositions[lower] + whitePositions[upper]) / 2 + 1) / totalWhite * 100;
-    }
     return (clamped - pianoStart + 1) / (pianoEnd - pianoStart) * 100;
   }
 
-  // Stack: bass(0) at bottom, soprano(3) at top
   const partOrder = ['bass', 'tenor', 'alto', 'soprano'];
   const lineH = 2, gap = 2;
 
@@ -523,7 +534,6 @@ function buildRangeIndicators() {
     const [lo, hi] = RANGE[part];
     const clampedLo = Math.max(pianoStart, lo);
     const clampedHi = Math.min(pianoEnd, hi);
-
     const leftPct = midiToLeftPct(clampedLo);
     const rightPct = midiToRightPct(clampedHi);
 
@@ -537,48 +547,40 @@ function buildRangeIndicators() {
   }
 }
 
-// Keyboard mapping: QWERTY row = white keys, number row = black keys
-// White: Q=C3, W=D3, E=E3, R=F3, T=G3, Y=A3, U=B3, I=C4, O=D4, P=E4, [=F4, ]=G4, \=A4, L=B4, ;=C5
-// Black: 2=C#3, 3=D#3, 5=F#3, 6=G#3, 7=A#3, 9=C#4, 0=D#4, -=F#4, ==G#4
-// Special: 1=hissing, 4=rubbing hands
+// Keyboard mapping: QWERTY row = white keys (shifted +2 whole steps), number row = black keys
+// C3 and D3 visible on piano but no keyboard shortcut
 const KEY_TO_MIDI = {
-  // C3-B3 (white on QWERTY row, black on number row)
-  'q': 48,  '2': 49,           // C3, C#3
-  'w': 50,  '3': 51,           // D3, D#3
-  'e': 52,                      // E3
-  'r': 53,  '5': 54,           // F3, F#3
-  't': 55,  '6': 56,           // G3, G#3
-  'y': 57,  '7': 58,           // A3, A#3
-  'u': 59,                      // B3
-  // C4-C5 (white on QWERTY row continued, black on number row)
-  'i': 60,  '9': 61,           // C4, C#4
-  'o': 62,  '0': 63,           // D4, D#4
-  'p': 64,                      // E4
-  '[': 65,  '-': 66,           // F4, F#4
-  ']': 67,  '=': 68,           // G4, G#4
-  '\\': 69,                     // A4
-  // Extended on home row
-  'l': 71,                      // B4
-  ';': 72,                      // C5
+  // E3-B3
+  'q': 52,  '3': 54,           // E3, F#3
+  'w': 53,  '4': 56,           // F3, G#3
+  'e': 55,  '5': 58,           // G3, A#3
+  'r': 57,                      // A3
+  't': 59,                      // B3
+  // C4-C5
+  'y': 60,  '7': 61,           // C4, C#4
+  'u': 62,  '8': 63,           // D4, D#4
+  'i': 64,                      // E4
+  'o': 65,  '0': 66,           // F4, F#4
+  'p': 67,  '-': 68,           // G4, G#4
+  '[': 69,  '=': 70,           // A4, A#4
+  ']': 71,                      // B4
+  '\\': 72,                     // C5
 };
 
-// Special keys (not in KEY_TO_MIDI)
-const SPECIAL_KEYS = { '1': 'hiss', '4': 'rub' };
-
 const heldKeyboard = new Set();
-const heldSpecial = new Set();
 
 document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.repeat) return;
 
-  // Check special keys first
-  if (SPECIAL_KEYS[e.key] && !heldSpecial.has(e.key)) {
-    e.preventDefault();
-    heldSpecial.add(e.key);
-    if (SPECIAL_KEYS[e.key] === 'rub') sendRub(true);
-    else if (SPECIAL_KEYS[e.key] === 'hiss') sendHiss(true);
-    return;
-  }
+  // Special toggle keys
+  if (e.key === '9') { e.preventDefault(); toggleRub(); return; }
+  if (e.key === '`') { e.preventDefault(); setSyllable(0); return; }
+  if (e.key === '1') { e.preventDefault(); setSyllable(1); return; }
+  if (e.key === '2') { e.preventDefault(); setSyllable(2); return; }
+  if (e.key === '6') { e.preventDefault(); setSyllable(3); return; }
+  if (e.key === ',') { e.preventDefault(); adjustBpm(-5); return; }
+  if (e.key === '.') { e.preventDefault(); adjustBpm(5); return; }
 
   const midi = KEY_TO_MIDI[e.key];
   if (midi !== undefined && !heldKeyboard.has(e.key)) {
@@ -589,13 +591,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keyup', (e) => {
-  if (SPECIAL_KEYS[e.key]) {
-    heldSpecial.delete(e.key);
-    if (SPECIAL_KEYS[e.key] === 'rub') sendRub(false);
-    else if (SPECIAL_KEYS[e.key] === 'hiss') sendHiss(false);
-    return;
-  }
-
   const midi = KEY_TO_MIDI[e.key];
   if (midi !== undefined) {
     heldKeyboard.delete(e.key);
