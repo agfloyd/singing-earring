@@ -19,12 +19,6 @@
   .alto .count { color: #c084fc; }
   .tenor .count { color: #60a5fa; }
   .bass .count { color: #34d399; }
-  .assignments { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
-  .assign-box { padding: 8px 14px; border-radius: 8px; font-size: 1.1rem; font-weight: bold; }
-  .assign-box.soprano { background: rgba(255,107,157,0.2); color: #ff6b9d; }
-  .assign-box.alto { background: rgba(192,132,252,0.2); color: #c084fc; }
-  .assign-box.tenor { background: rgba(96,165,250,0.2); color: #60a5fa; }
-  .assign-box.bass { background: rgba(52,211,153,0.2); color: #34d399; }
   .midi-select { background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 8px 12px; border-radius: 8px; font-size: 1rem; width: 100%; }
   .midi-status { font-size: 0.85rem; color: #888; margin-top: 6px; }
   .piano-wrapper { position: relative; margin-top: 10px; }
@@ -36,7 +30,6 @@
   .key.black .keybind { color: rgba(255,255,255,0.3); }
   .range-indicators { position: relative; height: 20px; margin-top: 2px; }
   .range-line { position: absolute; height: 2px; border-radius: 1px; }
-  .held-notes { font-size: 1.1rem; color: #ccc; margin-top: 8px; min-height: 1.5em; }
   #status { font-size: 0.85rem; color: #888; margin-top: 10px; }
   button { background: #e94560; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
   button:hover { background: #c23152; }
@@ -79,13 +72,6 @@
   <div class="midi-status" id="midiStatus">Requesting MIDI access...</div>
 </div>
 
-<div id="chordSection" class="section" style="display:none">
-  <h2>Current Chord</h2>
-  <div class="held-notes" id="heldNotes">No notes held</div>
-  <h2 style="margin-top:12px">Voice Assignments</h2>
-  <div class="assignments" id="assignments"></div>
-</div>
-
 <div id="controlsSection" class="section" style="display:none">
   <h2>Controls</h2>
   <div class="controls-row">
@@ -102,10 +88,9 @@
       <span class="syl-key">6</span><input class="syl-input" type="text" maxlength="6" value="Bum" data-idx="3">
     </div>
     <div class="bpm-control" id="bpmControl" style="display:none">
-      <button onclick="adjustBpm(-5)">&lt;</button>
-      <span>BPM = </span><input class="bpm-input" id="bpmInput" type="text" value="100">
-      <button onclick="adjustBpm(5)">&gt;</button>
-      <span style="font-size:0.6rem;color:#555">,/.</span>
+      <button onclick="adjustBpm(-5)">&lt; <span class="syl-key">,</span></button>
+      <span>BPM = </span><input class="bpm-input" id="bpmInput" type="text" inputmode="numeric" pattern="[0-9]*" value="100">
+      <button onclick="adjustBpm(5)">&gt; <span class="syl-key">.</span></button>
     </div>
   </div>
   <div class="controls-row">
@@ -116,7 +101,6 @@
 </div>
 
 <div id="keyboardSection" class="section" style="display:none">
-  <h2>Fallback Keyboard</h2>
   <div class="piano-wrapper">
     <div class="piano" id="piano"></div>
     <div class="range-indicators" id="rangeIndicators"></div>
@@ -210,12 +194,8 @@ function assignVoices(notes) {
 
 function updateDisplay() {
   const notes = [...heldNotes].sort((a, b) => a - b);
-  const heldEl = document.getElementById('heldNotes');
-  const assignEl = document.getElementById('assignments');
 
   if (notes.length === 0) {
-    heldEl.textContent = 'No notes held';
-    assignEl.innerHTML = '';
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ t: 'n', s: -1, a: -1, e: -1, b: -1 }));
     }
@@ -223,14 +203,7 @@ function updateDisplay() {
     return;
   }
 
-  heldEl.textContent = notes.map(noteName).join(' - ');
   const voices = assignVoices(notes);
-
-  assignEl.innerHTML = ['soprano','alto','tenor','bass'].map(p => {
-    const n = voices[p];
-    const label = n === -1 ? '---' : noteName(n);
-    return `<div class="assign-box ${p}">${p[0].toUpperCase()}: ${label}</div>`;
-  }).join('');
 
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify({
@@ -343,16 +316,28 @@ document.querySelectorAll('.syl-input').forEach(input => {
   });
   // Don't let clicking the input trigger setSyllable via the parent onclick
   input.addEventListener('click', (e) => e.stopPropagation());
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+  });
 });
 
 // Handle BPM input editing
-document.getElementById('bpmInput').addEventListener('change', (e) => {
+const bpmInputEl = document.getElementById('bpmInput');
+bpmInputEl.addEventListener('input', (e) => {
+  e.target.value = e.target.value.replace(/[^0-9]/g, '');
+});
+bpmInputEl.addEventListener('change', (e) => {
   const val = parseInt(e.target.value);
   if (!isNaN(val)) {
     pulseBpm = Math.max(30, Math.min(300, val));
     e.target.value = pulseBpm;
     if (syllables[activeSyllable].pulse) sendSyllable();
+  } else {
+    e.target.value = pulseBpm;
   }
+});
+bpmInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
 });
 
 // WebSocket
@@ -370,7 +355,6 @@ function createRoom() {
       document.getElementById('setup').style.display = 'none';
       document.getElementById('roomInfo').style.display = '';
       document.getElementById('midiSection').style.display = '';
-      document.getElementById('chordSection').style.display = '';
       document.getElementById('controlsSection').style.display = '';
       document.getElementById('keyboardSection').style.display = '';
       initMIDI();
@@ -550,6 +534,11 @@ function buildRangeIndicators() {
 // Keyboard mapping: QWERTY row = white keys (shifted +2 whole steps), number row = black keys
 // C3 and D3 visible on piano but no keyboard shortcut
 const KEY_TO_MIDI = {
+  // C3-D#3
+  'a': 48,                      // C3
+  's': 49,                      // C#3
+  'd': 50,                      // D3
+  'f': 51,                      // D#3
   // E3-B3
   'q': 52,  '3': 54,           // E3, F#3
   'w': 53,  '4': 56,           // F3, G#3
