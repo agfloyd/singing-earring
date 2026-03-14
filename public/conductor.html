@@ -35,9 +35,7 @@
   .key .keybind { font-size: 0.6rem; color: rgba(0,0,0,0.35); margin-top: 2px; font-weight: bold; }
   .key.black .keybind { color: rgba(255,255,255,0.3); }
   .range-indicators { position: relative; height: 20px; margin-top: 2px; }
-  .range-tick { position: absolute; width: 8px; height: 10px; bottom: 0; }
-  .range-tick.start { border-left: 3px solid; border-bottom: 3px solid; }
-  .range-tick.end { border-right: 3px solid; border-bottom: 3px solid; }
+  .range-line { position: absolute; height: 2px; border-radius: 1px; }
   .held-notes { font-size: 1.1rem; color: #ccc; margin-top: 8px; min-height: 1.5em; }
   #status { font-size: 0.85rem; color: #888; margin-top: 10px; }
   button { background: #e94560; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
@@ -471,16 +469,16 @@ function buildPiano() {
   }
 }
 
-// Range indicators — L-shaped ticks at range start, J-shaped ticks at range end
+// Range indicators — stacked horizontal lines showing each part's vocal range
+// Bass on bottom, tenor, alto, soprano on top
 function buildRangeIndicators() {
   const container = document.getElementById('rangeIndicators');
   container.innerHTML = '';
   const pianoStart = 48, pianoEnd = 72;
-  const totalKeys = pianoEnd - pianoStart;
 
-  // Count white keys for proper positioning
+  // White keys drive the piano layout (flex:1 each)
   const blackSet = new Set([1,3,6,8,10]);
-  const whitePositions = []; // midi -> fractional position based on white key index
+  const whitePositions = {};
   let whiteIdx = 0;
   for (let m = pianoStart; m <= pianoEnd; m++) {
     if (!blackSet.has(m % 12)) {
@@ -490,40 +488,52 @@ function buildRangeIndicators() {
   }
   const totalWhite = whiteIdx;
 
-  function midiToPercent(midi) {
+  // Left edge of a key as percentage
+  function midiToLeftPct(midi) {
     const clamped = Math.max(pianoStart, Math.min(pianoEnd, midi));
-    // Find nearest white key position for positioning
-    if (!blackSet.has(clamped % 12)) {
-      return (whitePositions[clamped] + 0.5) / totalWhite * 100;
+    if (whitePositions[clamped] !== undefined) {
+      return whitePositions[clamped] / totalWhite * 100;
     }
-    // Black key: position between surrounding white keys
-    const lower = clamped - 1;
-    const upper = clamped + 1;
+    const lower = clamped - 1, upper = clamped + 1;
     if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined) {
-      return ((whitePositions[lower] + whitePositions[upper]) / 2 + 0.5) / totalWhite * 100;
+      return (whitePositions[lower] + whitePositions[upper]) / 2 / totalWhite * 100;
     }
-    return (clamped - pianoStart) / totalKeys * 100;
+    return (clamped - pianoStart) / (pianoEnd - pianoStart) * 100;
   }
 
-  for (const part of ['soprano', 'alto', 'tenor', 'bass']) {
+  // Right edge of a key as percentage
+  function midiToRightPct(midi) {
+    const clamped = Math.max(pianoStart, Math.min(pianoEnd, midi));
+    if (whitePositions[clamped] !== undefined) {
+      return (whitePositions[clamped] + 1) / totalWhite * 100;
+    }
+    const lower = clamped - 1, upper = clamped + 1;
+    if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined) {
+      return ((whitePositions[lower] + whitePositions[upper]) / 2 + 1) / totalWhite * 100;
+    }
+    return (clamped - pianoStart + 1) / (pianoEnd - pianoStart) * 100;
+  }
+
+  // Stack: bass(0) at bottom, soprano(3) at top
+  const partOrder = ['bass', 'tenor', 'alto', 'soprano'];
+  const lineH = 2, gap = 2;
+
+  for (let i = 0; i < partOrder.length; i++) {
+    const part = partOrder[i];
     const [lo, hi] = RANGE[part];
     const clampedLo = Math.max(pianoStart, lo);
     const clampedHi = Math.min(pianoEnd, hi);
-    const color = PART_COLORS[part];
 
-    // Start tick (L-shaped)
-    const startTick = document.createElement('div');
-    startTick.className = 'range-tick start';
-    startTick.style.left = midiToPercent(clampedLo) + '%';
-    startTick.style.borderColor = color;
-    container.appendChild(startTick);
+    const leftPct = midiToLeftPct(clampedLo);
+    const rightPct = midiToRightPct(clampedHi);
 
-    // End tick (J-shaped)
-    const endTick = document.createElement('div');
-    endTick.className = 'range-tick end';
-    endTick.style.left = midiToPercent(clampedHi) + '%';
-    endTick.style.borderColor = color;
-    container.appendChild(endTick);
+    const line = document.createElement('div');
+    line.className = 'range-line';
+    line.style.background = PART_COLORS[part];
+    line.style.left = leftPct + '%';
+    line.style.width = (rightPct - leftPct) + '%';
+    line.style.bottom = (i * (lineH + gap)) + 'px';
+    container.appendChild(line);
   }
 }
 
