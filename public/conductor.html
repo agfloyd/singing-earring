@@ -27,18 +27,22 @@
   .assign-box.bass { background: rgba(52,211,153,0.2); color: #34d399; }
   .midi-select { background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 8px 12px; border-radius: 8px; font-size: 1rem; width: 100%; }
   .midi-status { font-size: 0.85rem; color: #888; margin-top: 6px; }
-  .piano { display: flex; position: relative; height: 140px; margin-top: 10px; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .piano-wrapper { position: relative; margin-top: 10px; }
+  .piano { display: flex; position: relative; height: 140px; user-select: none; -webkit-user-select: none; touch-action: none; }
   .key { position: relative; border: 1px solid #333; border-radius: 0 0 6px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 6px; font-size: 0.65rem; color: #888; transition: background 0.05s; }
   .key.white { background: #ddd; flex: 1; height: 140px; z-index: 1; }
   .key.black { background: #222; width: 28px; height: 85px; margin-left: -14px; margin-right: -14px; z-index: 2; color: #666; }
-  .key.white.active { background: #e94560; }
-  .key.black.active { background: #c23152; }
   .key .keybind { font-size: 0.6rem; color: rgba(0,0,0,0.35); margin-top: 2px; font-weight: bold; }
   .key.black .keybind { color: rgba(255,255,255,0.3); }
+  .range-indicators { position: relative; height: 20px; margin-top: 2px; }
+  .range-tick { position: absolute; width: 8px; height: 10px; bottom: 0; }
+  .range-tick.start { border-left: 3px solid; border-bottom: 3px solid; }
+  .range-tick.end { border-right: 3px solid; border-bottom: 3px solid; }
   .held-notes { font-size: 1.1rem; color: #ccc; margin-top: 8px; min-height: 1.5em; }
   #status { font-size: 0.85rem; color: #888; margin-top: 10px; }
   button { background: #e94560; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
   button:hover { background: #c23152; }
+  .special-indicator { font-size: 0.85rem; color: #fbbf24; margin-top: 6px; min-height: 1.2em; }
 </style>
 </head>
 <body>
@@ -72,16 +76,21 @@
   <div class="held-notes" id="heldNotes">No notes held</div>
   <h2 style="margin-top:12px">Voice Assignments</h2>
   <div class="assignments" id="assignments"></div>
+  <div class="special-indicator" id="specialIndicator"></div>
 </div>
 
 <div id="keyboardSection" class="section" style="display:none">
   <h2>Fallback Keyboard</h2>
-  <div class="piano" id="piano"></div>
+  <div class="piano-wrapper">
+    <div class="piano" id="piano"></div>
+    <div class="range-indicators" id="rangeIndicators"></div>
+  </div>
 </div>
 
 <script>
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PARTS = ['bass','tenor','alto','soprano'];
+const PART_COLORS = { soprano: '#ff6b9d', alto: '#c084fc', tenor: '#60a5fa', bass: '#34d399' };
 // Range midpoints (MIDI note numbers)
 const RANGE_MID = { soprano: 72, alto: 69, tenor: 55, bass: 43 };
 // Singable ranges
@@ -111,30 +120,21 @@ function fitToRange(note, part) {
   const [lo, hi] = RANGE[part];
   while (note < lo) note += 12;
   while (note > hi) note -= 12;
-  // If still out of range, clamp
   if (note < lo) note = lo;
   if (note > hi) note = hi;
   return note;
 }
 
 function assignVoices(notes) {
-  // Returns { soprano, alto, tenor, bass } with MIDI note numbers, -1 = silence
-  // INVARIANT: every held note gets at least one part assigned
   if (notes.length === 0) return { soprano: -1, alto: -1, tenor: -1, bass: -1 };
 
   const sorted = [...notes].sort((a, b) => a - b);
-
-  // Only assign notes to parts that actually have singers
   const activeParts = PARTS.filter(p => (singerCounts[p] || 0) > 0);
-  // If no one has joined yet, assign to all parts (for testing/preview)
   const partsToAssign = activeParts.length > 0 ? activeParts : PARTS;
-
-  // Sort active parts by range midpoint (low to high): bass, tenor, alto, soprano
   const partsByRange = [...partsToAssign].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
 
   const result = { soprano: -1, alto: -1, tenor: -1, bass: -1 };
 
-  // Distance from a part's range midpoint to a note (considering octave transposition)
   function partNoteDist(part, note) {
     let best = Infinity;
     for (let oct = -2; oct <= 2; oct++) {
@@ -143,12 +143,10 @@ function assignVoices(notes) {
     return best;
   }
 
-  const notePartMap = new Map(); // note index → array of assigned parts
+  const notePartMap = new Map();
   for (let ni = 0; ni < sorted.length; ni++) notePartMap.set(ni, []);
 
   if (sorted.length <= partsByRange.length) {
-    // Fewer (or equal) notes than parts:
-    // Step 1: Each note gets its closest unassigned part (guarantees every note is covered)
     const unassigned = new Set(partsByRange);
     for (let ni = 0; ni < sorted.length; ni++) {
       let bestPart = null, bestDist = Infinity;
@@ -161,7 +159,6 @@ function assignVoices(notes) {
         unassigned.delete(bestPart);
       }
     }
-    // Step 2: Remaining parts go to their closest note
     for (const part of unassigned) {
       let bestNi = 0, bestDist = Infinity;
       for (let ni = 0; ni < sorted.length; ni++) {
@@ -171,9 +168,6 @@ function assignVoices(notes) {
       notePartMap.get(bestNi).push(part);
     }
   } else {
-    // More notes than parts:
-    // Step 1: Each part goes to its closest note
-    const assignedParts = new Set();
     for (const part of partsByRange) {
       let bestNi = 0, bestDist = Infinity;
       for (let ni = 0; ni < sorted.length; ni++) {
@@ -182,10 +176,8 @@ function assignVoices(notes) {
       }
       notePartMap.get(bestNi).push(part);
     }
-    // Step 2: Ensure every note has at least one part — steal from overpopulated notes
     for (let ni = 0; ni < sorted.length; ni++) {
       if (notePartMap.get(ni).length > 0) continue;
-      // Find the note with the most parts to steal from
       let donorNi = -1, maxParts = 0;
       for (let di = 0; di < sorted.length; di++) {
         if (notePartMap.get(di).length > maxParts) {
@@ -194,7 +186,6 @@ function assignVoices(notes) {
         }
       }
       if (donorNi >= 0 && maxParts > 1) {
-        // Steal the part that's closest to the uncovered note
         let bestIdx = 0, bestDist = Infinity;
         const donorParts = notePartMap.get(donorNi);
         for (let pi = 0; pi < donorParts.length; pi++) {
@@ -207,7 +198,6 @@ function assignVoices(notes) {
     }
   }
 
-  // Write results
   for (let ni = 0; ni < sorted.length; ni++) {
     for (const part of notePartMap.get(ni)) {
       result[part] = fitToRange(sorted[ni], part);
@@ -215,6 +205,26 @@ function assignVoices(notes) {
   }
 
   return result;
+}
+
+// Find the worst-fitting active part for hissing
+function worstFitPart() {
+  const activeParts = PARTS.filter(p => (singerCounts[p] || 0) > 0);
+  if (activeParts.length === 0) return PARTS[Math.floor(Math.random() * PARTS.length)];
+  const notes = [...heldNotes];
+  if (notes.length === 0) return activeParts[Math.floor(Math.random() * activeParts.length)];
+
+  let worstPart = activeParts[0], worstDist = -1;
+  for (const part of activeParts) {
+    let minDist = Infinity;
+    for (const note of notes) {
+      for (let oct = -2; oct <= 2; oct++) {
+        minDist = Math.min(minDist, Math.abs((note + oct * 12) - RANGE_MID[part]));
+      }
+    }
+    if (minDist > worstDist) { worstDist = minDist; worstPart = part; }
+  }
+  return worstPart;
 }
 
 function updateDisplay() {
@@ -225,12 +235,13 @@ function updateDisplay() {
   if (notes.length === 0) {
     heldEl.textContent = 'No notes held';
     assignEl.innerHTML = '';
-    // Send silence to all parts
     if (ws && ws.readyState === 1) {
       ws.send(JSON.stringify({ t: 'n', s: -1, a: -1, e: -1, b: -1 }));
     }
     // Clear piano highlights
-    document.querySelectorAll('.key').forEach(k => k.classList.remove('active'));
+    document.querySelectorAll('.key').forEach(k => {
+      k.style.background = '';
+    });
     return;
   }
 
@@ -243,21 +254,48 @@ function updateDisplay() {
     return `<div class="assign-box ${p}">${p[0].toUpperCase()}: ${label}</div>`;
   }).join('');
 
-  // Send over WebSocket
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify({
       t: 'n',
       s: voices.soprano,
       a: voices.alto,
-      e: voices.tenor,  // 'e' for tenor to avoid key collision with 't' (message type)
+      e: voices.tenor,
       b: voices.bass,
     }));
   }
 
-  // Update piano key highlights
+  // Color piano keys by assigned part
   document.querySelectorAll('.key').forEach(k => {
     const midi = parseInt(k.dataset.midi);
-    k.classList.toggle('active', heldNotes.has(midi));
+    const isBlack = k.classList.contains('black');
+
+    if (!heldNotes.has(midi)) {
+      k.style.background = '';
+      return;
+    }
+
+    // Find all parts assigned to a note with the same pitch class as this key
+    const partsOnKey = [];
+    for (const part of ['soprano','alto','tenor','bass']) {
+      if (voices[part] >= 0 && voices[part] % 12 === midi % 12) {
+        partsOnKey.push(part);
+      }
+    }
+
+    if (partsOnKey.length === 0) {
+      // Held but no part matched — fallback
+      k.style.background = isBlack ? '#c23152' : '#e94560';
+    } else if (partsOnKey.length === 1) {
+      k.style.background = PART_COLORS[partsOnKey[0]];
+    } else {
+      // Multi-color gradient stripes
+      const stops = partsOnKey.map((p, i) => {
+        const pct1 = (i / partsOnKey.length * 100).toFixed(1);
+        const pct2 = ((i + 1) / partsOnKey.length * 100).toFixed(1);
+        return `${PART_COLORS[p]} ${pct1}%, ${PART_COLORS[p]} ${pct2}%`;
+      }).join(', ');
+      k.style.background = `linear-gradient(to right, ${stops})`;
+    }
   });
 }
 
@@ -269,6 +307,36 @@ function noteOn(midi) {
 function noteOff(midi) {
   heldNotes.delete(midi);
   updateDisplay();
+}
+
+// Special triggers
+let rubActive = false;
+let hissActive = false;
+let hissPart = null;
+
+function sendRub(on) {
+  rubActive = on;
+  const el = document.getElementById('specialIndicator');
+  el.textContent = on ? 'RUBBING HANDS active' : '';
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ t: 'rub', on }));
+  }
+}
+
+function sendHiss(on) {
+  hissActive = on;
+  const el = document.getElementById('specialIndicator');
+  if (on) {
+    hissPart = worstFitPart();
+    el.textContent = `HISSING: ${hissPart.toUpperCase()}`;
+    el.style.color = PART_COLORS[hissPart];
+  } else {
+    el.textContent = '';
+    el.style.color = '';
+  }
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ t: 'hiss', part: hissPart, on }));
+  }
 }
 
 // WebSocket
@@ -289,13 +357,13 @@ function createRoom() {
       document.getElementById('chordSection').style.display = '';
       document.getElementById('keyboardSection').style.display = '';
       initMIDI();
+      buildRangeIndicators();
     } else if (msg.t === 'r') {
       singerCounts = msg.singers;
       document.getElementById('countS').textContent = singerCounts.soprano || 0;
       document.getElementById('countA').textContent = singerCounts.alto || 0;
       document.getElementById('countT').textContent = singerCounts.tenor || 0;
       document.getElementById('countB').textContent = singerCounts.bass || 0;
-      // Re-run assignment in case parts changed while notes are held
       if (heldNotes.size > 0) updateDisplay();
     }
   };
@@ -357,8 +425,7 @@ function onMIDIMessage(e) {
 }
 
 // Fallback on-screen keyboard (C3 to C5, 2 octaves)
-// Pointer tracking for multi-touch support
-const pointerToMidi = new Map(); // pointerId -> midi
+const pointerToMidi = new Map();
 
 function buildPiano() {
   const piano = document.getElementById('piano');
@@ -373,11 +440,9 @@ function buildPiano() {
     key.className = `key ${isBlack ? 'black' : 'white'}`;
     key.dataset.midi = midi;
 
-    // Note name label
     const nameLabel = document.createTextNode(isBlack ? '' : NOTES[semitone] + (Math.floor(midi / 12) - 1));
     key.appendChild(nameLabel);
 
-    // Keyboard shortcut label
     const bindKey = Object.entries(KEY_TO_MIDI).find(([k, m]) => m === midi);
     if (bindKey) {
       const bindEl = document.createElement('span');
@@ -386,7 +451,6 @@ function buildPiano() {
       key.appendChild(bindEl);
     }
 
-    // Pointer events for multi-touch
     key.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       key.setPointerCapture(e.pointerId);
@@ -407,33 +471,105 @@ function buildPiano() {
   }
 }
 
-// Laptop keyboard mapping: number row + letter keys for two octaves
-// White keys: 1-8 = C3-C4, then 9,0,-,=,backspace for D4-G4
-// Black keys: q=C#3, w=D#3, r=F#3, t=G#3, y=A#3, i=C#4, o=D#4, [=F#4, ]=G#4
+// Range indicators — L-shaped ticks at range start, J-shaped ticks at range end
+function buildRangeIndicators() {
+  const container = document.getElementById('rangeIndicators');
+  container.innerHTML = '';
+  const pianoStart = 48, pianoEnd = 72;
+  const totalKeys = pianoEnd - pianoStart;
+
+  // Count white keys for proper positioning
+  const blackSet = new Set([1,3,6,8,10]);
+  const whitePositions = []; // midi -> fractional position based on white key index
+  let whiteIdx = 0;
+  for (let m = pianoStart; m <= pianoEnd; m++) {
+    if (!blackSet.has(m % 12)) {
+      whitePositions[m] = whiteIdx;
+      whiteIdx++;
+    }
+  }
+  const totalWhite = whiteIdx;
+
+  function midiToPercent(midi) {
+    const clamped = Math.max(pianoStart, Math.min(pianoEnd, midi));
+    // Find nearest white key position for positioning
+    if (!blackSet.has(clamped % 12)) {
+      return (whitePositions[clamped] + 0.5) / totalWhite * 100;
+    }
+    // Black key: position between surrounding white keys
+    const lower = clamped - 1;
+    const upper = clamped + 1;
+    if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined) {
+      return ((whitePositions[lower] + whitePositions[upper]) / 2 + 0.5) / totalWhite * 100;
+    }
+    return (clamped - pianoStart) / totalKeys * 100;
+  }
+
+  for (const part of ['soprano', 'alto', 'tenor', 'bass']) {
+    const [lo, hi] = RANGE[part];
+    const clampedLo = Math.max(pianoStart, lo);
+    const clampedHi = Math.min(pianoEnd, hi);
+    const color = PART_COLORS[part];
+
+    // Start tick (L-shaped)
+    const startTick = document.createElement('div');
+    startTick.className = 'range-tick start';
+    startTick.style.left = midiToPercent(clampedLo) + '%';
+    startTick.style.borderColor = color;
+    container.appendChild(startTick);
+
+    // End tick (J-shaped)
+    const endTick = document.createElement('div');
+    endTick.className = 'range-tick end';
+    endTick.style.left = midiToPercent(clampedHi) + '%';
+    endTick.style.borderColor = color;
+    container.appendChild(endTick);
+  }
+}
+
+// Keyboard mapping: QWERTY row = white keys, number row = black keys
+// White: Q=C3, W=D3, E=E3, R=F3, T=G3, Y=A3, U=B3, I=C4, O=D4, P=E4, [=F4, ]=G4, \=A4, L=B4, ;=C5
+// Black: 2=C#3, 3=D#3, 5=F#3, 6=G#3, 7=A#3, 9=C#4, 0=D#4, -=F#4, ==G#4
+// Special: 1=hissing, 4=rubbing hands
 const KEY_TO_MIDI = {
-  // C3-B3 (white + black)
-  '1': 48,  'q': 49,           // C3, C#3
-  '2': 50,  'w': 51,           // D3, D#3
-  '3': 52,                      // E3
-  '4': 53,  'r': 54,           // F3, F#3
-  '5': 55,  't': 56,           // G3, G#3
-  '6': 57,  'y': 58,           // A3, A#3
-  '7': 59,                      // B3
-  // C4-C5 (white + black)
-  '8': 60,  'i': 61,           // C4, C#4
-  '9': 62,  'o': 63,           // D4, D#4
-  '0': 64,                      // E4
-  '-': 65,  '[': 66,           // F4, F#4
-  '=': 67,  ']': 68,           // G4, G#4
-  'Backspace': 69, '\\': 70,   // A4, A#4
-  // No good key for B4 and C5, but they're on the on-screen piano
+  // C3-B3 (white on QWERTY row, black on number row)
+  'q': 48,  '2': 49,           // C3, C#3
+  'w': 50,  '3': 51,           // D3, D#3
+  'e': 52,                      // E3
+  'r': 53,  '5': 54,           // F3, F#3
+  't': 55,  '6': 56,           // G3, G#3
+  'y': 57,  '7': 58,           // A3, A#3
+  'u': 59,                      // B3
+  // C4-C5 (white on QWERTY row continued, black on number row)
+  'i': 60,  '9': 61,           // C4, C#4
+  'o': 62,  '0': 63,           // D4, D#4
+  'p': 64,                      // E4
+  '[': 65,  '-': 66,           // F4, F#4
+  ']': 67,  '=': 68,           // G4, G#4
+  '\\': 69,                     // A4
+  // Extended on home row
+  'l': 71,                      // B4
+  ';': 72,                      // C5
 };
 
-const heldKeyboard = new Set(); // track held keys to ignore key-repeat
+// Special keys (not in KEY_TO_MIDI)
+const SPECIAL_KEYS = { '1': 'hiss', '4': 'rub' };
+
+const heldKeyboard = new Set();
+const heldSpecial = new Set();
 
 document.addEventListener('keydown', (e) => {
-  // Don't capture if typing in an input
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+  // Check special keys first
+  if (SPECIAL_KEYS[e.key] && !heldSpecial.has(e.key)) {
+    e.preventDefault();
+    heldSpecial.add(e.key);
+    if (SPECIAL_KEYS[e.key] === 'rub') sendRub(true);
+    else if (SPECIAL_KEYS[e.key] === 'hiss') sendHiss(true);
+    return;
+  }
+
   const midi = KEY_TO_MIDI[e.key];
   if (midi !== undefined && !heldKeyboard.has(e.key)) {
     e.preventDefault();
@@ -443,9 +579,15 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keyup', (e) => {
+  if (SPECIAL_KEYS[e.key]) {
+    heldSpecial.delete(e.key);
+    if (SPECIAL_KEYS[e.key] === 'rub') sendRub(false);
+    else if (SPECIAL_KEYS[e.key] === 'hiss') sendHiss(false);
+    return;
+  }
+
   const midi = KEY_TO_MIDI[e.key];
   if (midi !== undefined) {
-    heldKeyboard.add(e.key); // ensure it's tracked even if keydown was missed
     heldKeyboard.delete(e.key);
     noteOff(midi);
   }
