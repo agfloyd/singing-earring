@@ -33,6 +33,7 @@
   .key { position: relative; border: 1px solid #333; border-radius: 0 0 6px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 6px; font-size: 0.65rem; color: #888; transition: background 0.05s; }
   .key.white { background: #ddd; flex: 1; height: 140px; z-index: 1; }
   .key.black { background: #222; width: 28px; height: 85px; margin-left: -14px; margin-right: -14px; z-index: 2; color: #666; }
+  .key > * { pointer-events: none; }
   .key .keybind { font-size: 0.6rem; color: rgba(0,0,0,0.35); margin-top: 2px; font-weight: bold; }
   .key.black .keybind { color: rgba(255,255,255,0.3); }
   .range-indicators { position: relative; height: 20px; margin-top: 2px; }
@@ -73,7 +74,7 @@
     </div>
     <div class="part-column" data-part="bass" style="color: #34d399;">
       <div class="part-label">Bass</div>
-      <div class="part-modifier">⇧</div>
+      <div class="part-modifier">Z</div>
       <div class="part-count" id="countB">0</div>
       <div class="part-syllable" id="sylB"></div>
       <div class="part-note" id="noteB"></div>
@@ -81,7 +82,7 @@
     </div>
     <div class="part-column" data-part="tenor" style="color: #60a5fa;">
       <div class="part-label">Tenor</div>
-      <div class="part-modifier">⌃</div>
+      <div class="part-modifier">X</div>
       <div class="part-count" id="countT">0</div>
       <div class="part-syllable" id="sylT"></div>
       <div class="part-note" id="noteT"></div>
@@ -89,7 +90,7 @@
     </div>
     <div class="part-column" data-part="alto" style="color: #c084fc;">
       <div class="part-label">Alto</div>
-      <div class="part-modifier">⌥</div>
+      <div class="part-modifier">C</div>
       <div class="part-count" id="countA">0</div>
       <div class="part-syllable" id="sylA"></div>
       <div class="part-note" id="noteA"></div>
@@ -97,7 +98,7 @@
     </div>
     <div class="part-column" data-part="soprano" style="color: #ff6b9d;">
       <div class="part-label">Soprano</div>
-      <div class="part-modifier">⌘</div>
+      <div class="part-modifier">V</div>
       <div class="part-count" id="countS">0</div>
       <div class="part-syllable" id="sylS"></div>
       <div class="part-note" id="noteS"></div>
@@ -169,7 +170,8 @@ let singerCounts = { soprano: 0, alto: 0, tenor: 0, bass: 0 };
 // Sustain mode
 let sustainMode = false;
 let sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
-let modifiers = { shift: false, ctrl: false, alt: false, meta: false };
+let sustainHeldNotes = new Set(); // physically held notes in sustain mode
+let modifiers = { z: false, x: false, c: false, v: false };
 
 // Syllable system
 let activeSyllable = 0;
@@ -412,8 +414,9 @@ function updateDisplay() {
 
 function noteOn(midi) {
   if (sustainMode) {
+    sustainHeldNotes.add(midi);
     const parts = getTargetParts();
-    for (const part of parts) { sustainedNotes[part] = midi; }
+    distributeSustainNotes(parts);
     updateSustainDisplay();
   } else {
     heldNotes.add(midi);
@@ -421,22 +424,60 @@ function noteOn(midi) {
   }
 }
 function noteOff(midi) {
-  if (sustainMode) return; // no-op in sustain mode
+  if (sustainMode) {
+    sustainHeldNotes.delete(midi);
+    // Don't redistribute — sustain means the last assignment sticks
+    return;
+  }
   heldNotes.delete(midi);
   updateDisplay();
 }
 
+// Distribute currently held notes across targeted parts (sustain mode)
+function distributeSustainNotes(targetParts) {
+  const notes = [...sustainHeldNotes].sort((a, b) => a - b);
+  if (notes.length === 0) return;
+
+  // Filter to parts with singers (fall back to all targeted if none have singers)
+  const activeParts = targetParts.filter(p => (singerCounts[p] || 0) > 0);
+  const partsToUse = activeParts.length > 0 ? activeParts : targetParts;
+
+  // Sort target parts by range (low to high)
+  const partsByRange = [...partsToUse].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
+  const n = notes.length, p = partsByRange.length;
+
+  if (n >= p) {
+    // More notes than parts: spread parts proportionally across notes
+    for (let pi = 0; pi < p; pi++) {
+      const ni = Math.round(pi * (n - 1) / (p - 1 || 1));
+      sustainedNotes[partsByRange[pi]] = notes[ni];
+    }
+  } else {
+    // More parts than notes: distribute evenly, lower parts on lower notes
+    const base = Math.floor(p / n);
+    const remainder = p % n;
+    let partIdx = 0;
+    for (let ni = 0; ni < n; ni++) {
+      const count = base + (ni < remainder ? 1 : 0);
+      for (let j = 0; j < count; j++) {
+        sustainedNotes[partsByRange[partIdx]] = notes[ni];
+        partIdx++;
+      }
+    }
+  }
+}
+
 function getTargetParts() {
   // If no modifier held, target all parts
-  if (!modifiers.shift && !modifiers.ctrl && !modifiers.alt && !modifiers.meta) {
+  if (!modifiers.z && !modifiers.x && !modifiers.c && !modifiers.v) {
     return ['bass', 'tenor', 'alto', 'soprano'];
   }
   // Otherwise, build list from held modifiers
   const parts = [];
-  if (modifiers.shift) parts.push('bass');
-  if (modifiers.ctrl) parts.push('tenor');
-  if (modifiers.alt) parts.push('alto');
-  if (modifiers.meta) parts.push('soprano');
+  if (modifiers.z) parts.push('bass');
+  if (modifiers.x) parts.push('tenor');
+  if (modifiers.c) parts.push('alto');
+  if (modifiers.v) parts.push('soprano');
   return parts;
 }
 
@@ -490,10 +531,12 @@ function toggleSustain() {
     heldNotes.clear();
     heldKeyboard.clear();
     sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
+    sustainHeldNotes.clear();
     partSyllables = { bass: activeSyllable, tenor: activeSyllable, alto: activeSyllable, soprano: activeSyllable };
     updateSustainDisplay();
   } else {
     sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
+    sustainHeldNotes.clear();
     updateDisplay();
   }
   updateSustainHighlight();
@@ -684,18 +727,27 @@ async function initMIDI() {
     function updateInputs() {
       selectEl.innerHTML = '';
       const inputs = [...midiAccess.inputs.values()];
-      if (inputs.length === 0) {
-        selectEl.innerHTML = '<option value="">No MIDI devices — use keyboard below</option>';
-        statusEl.textContent = 'No MIDI devices found. Use the on-screen keyboard.';
-        return;
-      }
+
+      // Always add laptop keyboard option first
+      const kbOpt = document.createElement('option');
+      kbOpt.value = '';
+      kbOpt.textContent = 'Laptop keyboard (on-screen)';
+      selectEl.appendChild(kbOpt);
+
       for (const input of inputs) {
         const opt = document.createElement('option');
         opt.value = input.id;
         opt.textContent = input.name;
         selectEl.appendChild(opt);
       }
-      selectInput(inputs[0].id);
+
+      // Auto-select first MIDI device if available, otherwise stay on keyboard
+      if (inputs.length > 0) {
+        selectEl.value = inputs[0].id;
+        selectInput(inputs[0].id);
+      } else {
+        statusEl.textContent = 'No MIDI devices found. Use the on-screen keyboard.';
+      }
     }
 
     selectEl.addEventListener('change', (e) => selectInput(e.target.value));
@@ -707,7 +759,11 @@ async function initMIDI() {
 }
 
 function selectInput(id) {
-  if (currentInput) currentInput.onmidimessage = null;
+  if (currentInput) { currentInput.onmidimessage = null; currentInput = null; }
+  if (!id) {
+    document.getElementById('midiStatus').textContent = 'Using laptop keyboard';
+    return;
+  }
   currentInput = midiAccess.inputs.get(id);
   if (currentInput) {
     currentInput.onmidimessage = onMIDIMessage;
@@ -752,22 +808,8 @@ function buildPiano() {
 
     key.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      modifiers.shift = e.shiftKey;
-      modifiers.ctrl = e.ctrlKey;
-      modifiers.alt = e.altKey;
-      modifiers.meta = e.metaKey;
-      key.setPointerCapture(e.pointerId);
       pointerToMidi.set(e.pointerId, midi);
       noteOn(midi);
-    });
-    key.addEventListener('pointerup', (e) => {
-      e.preventDefault();
-      const m = pointerToMidi.get(e.pointerId);
-      if (m !== undefined) { noteOff(m); pointerToMidi.delete(e.pointerId); }
-    });
-    key.addEventListener('pointercancel', (e) => {
-      const m = pointerToMidi.get(e.pointerId);
-      if (m !== undefined) { noteOff(m); pointerToMidi.delete(e.pointerId); }
     });
 
     piano.appendChild(key);
@@ -868,36 +910,30 @@ const CODE_TO_KEY = {
 const heldKeyboard = new Set();
 
 document.addEventListener('keydown', (e) => {
-  modifiers.shift = e.shiftKey;
-  modifiers.ctrl = e.ctrlKey;
-  modifiers.alt = e.altKey;
-  modifiers.meta = e.metaKey;
-  if (sustainMode) updateSustainHighlight();
+  // Track ZXCV modifier keys
+  if (e.code === 'KeyZ') { modifiers.z = true; if (sustainMode) updateSustainHighlight(); return; }
+  if (e.code === 'KeyX') { modifiers.x = true; if (sustainMode) updateSustainHighlight(); return; }
+  if (e.code === 'KeyC') { modifiers.c = true; if (sustainMode) updateSustainHighlight(); return; }
+  if (e.code === 'KeyV') { modifiers.v = true; if (sustainMode) updateSustainHighlight(); return; }
 
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
   if (e.repeat) return;
 
-  // Syllable keys — allow with modifiers in sustain mode (use e.code for reliability)
-  if (sustainMode) {
-    const sylCodes = { 'KeyA': 0, 'KeyM': 1, 'KeyH': 2, 'KeyB': 3, 'KeyS': 4 };
-    if (sylCodes[e.code] !== undefined) { e.preventDefault(); setSyllable(sylCodes[e.code]); return; }
-  }
+  // Syllable keys
+  if (e.key === 'a') { e.preventDefault(); setSyllable(0); return; }
+  if (e.key === 'm') { e.preventDefault(); setSyllable(1); return; }
+  if (e.key === 'h') { e.preventDefault(); setSyllable(2); return; }
+  if (e.key === 'b') { e.preventDefault(); setSyllable(3); return; }
+  if (e.key === 's') { e.preventDefault(); setSyllable(4); return; }
 
-  // Volume keys — work with modifiers (for per-part in sustain mode)
+  // Volume keys
   if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
   if (e.code === 'Digit6') { e.preventDefault(); startVolHold(-1); return; }
 
-  // Special toggle keys (only when no modifier held)
-  if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    if (e.key === 'a') { e.preventDefault(); setSyllable(0); return; }
-    if (e.key === 'm') { e.preventDefault(); setSyllable(1); return; }
-    if (e.key === 'h') { e.preventDefault(); setSyllable(2); return; }
-    if (e.key === 'b') { e.preventDefault(); setSyllable(3); return; }
-    if (e.key === 's') { e.preventDefault(); setSyllable(4); return; }
-    if (e.key === ',') { e.preventDefault(); startBpmHold(-5); return; }
-    if (e.key === '.') { e.preventDefault(); startBpmHold(5); return; }
-    if (e.key === ' ') { e.preventDefault(); toggleSustain(); return; }
-  }
+  // BPM and sustain
+  if (e.key === ',') { e.preventDefault(); startBpmHold(-5); return; }
+  if (e.key === '.') { e.preventDefault(); startBpmHold(5); return; }
+  if (e.key === ' ') { e.preventDefault(); toggleSustain(); return; }
 
   // Use e.code to reliably get the physical key regardless of modifiers
   const key = e.key.toLowerCase();
@@ -915,11 +951,11 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keyup', (e) => {
-  modifiers.shift = e.shiftKey;
-  modifiers.ctrl = e.ctrlKey;
-  modifiers.alt = e.altKey;
-  modifiers.meta = e.metaKey;
-  if (sustainMode) updateSustainHighlight();
+  // Track ZXCV modifier keys
+  if (e.code === 'KeyZ') { modifiers.z = false; if (sustainMode) updateSustainHighlight(); return; }
+  if (e.code === 'KeyX') { modifiers.x = false; if (sustainMode) updateSustainHighlight(); return; }
+  if (e.code === 'KeyC') { modifiers.c = false; if (sustainMode) updateSustainHighlight(); return; }
+  if (e.code === 'KeyV') { modifiers.v = false; if (sustainMode) updateSustainHighlight(); return; }
 
   if (e.code === 'Digit9' || e.code === 'Digit6') { stopVolHold(); return; }
   if (e.key === ',') { stopBpmHold(true, -5); return; }
@@ -934,6 +970,16 @@ document.addEventListener('keyup', (e) => {
 });
 
 buildPiano();
+
+// Document-level pointer release for on-screen piano keys
+document.addEventListener('pointerup', (e) => {
+  const m = pointerToMidi.get(e.pointerId);
+  if (m !== undefined) { noteOff(m); pointerToMidi.delete(e.pointerId); }
+});
+document.addEventListener('pointercancel', (e) => {
+  const m = pointerToMidi.get(e.pointerId);
+  if (m !== undefined) { noteOff(m); pointerToMidi.delete(e.pointerId); }
+});
 </script>
 </body>
 </html>
