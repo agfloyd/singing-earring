@@ -67,23 +67,23 @@ MIDI keyboards are also supported (Chrome only) and take priority when connected
 ## Architecture
 
 ```
-┌─────────────┐     WebSocket      ┌─────────────┐
-│  Conductor   │ ──────────────── │   Server     │
-│  (laptop)    │   note messages   │  (Python)    │
-│              │                   │              │
-│  MIDI/Piano  │                   │  Room mgmt   │
-│  Voice assign│                   │  Msg relay    │
-└─────────────┘                   └──────┬───────┘
-                                         │ broadcast
-                          ┌──────────────┼──────────────┐
-                          │              │              │
-                    ┌─────┴─────┐  ┌─────┴─────┐  ┌─────┴─────┐
+┌──────────────┐     WebSocket     ┌─────────────┐
+│  Conductor   │ ───────────────── │   Server    │
+│  (laptop)    │   note messages   │  (Python)   │
+│              │                   │             │
+│  MIDI/Piano  │                   │  Room mgmt  │
+│  Voice assign│                   │  Msg relay  │
+└──────────────┘                   └──────┬──────┘
+                                          │ broadcast
+                          ┌───────────────┼───────────────┐
+                          │               │               │
+                    ┌─────┴──────┐  ┌─────┴──────┐  ┌─────┴──────┐
                     │  Singer 1  │  │  Singer 2  │  │  Singer 3  │
                     │  (phone)   │  │  (phone)   │  │  (phone)   │
                     │            │  │            │  │            │
                     │  Web Audio │  │  Web Audio │  │  Web Audio │
                     │  oscillator│  │  oscillator│  │  oscillator│
-                    └───────────┘  └───────────┘  └───────────┘
+                    └────────────┘  └────────────┘  └────────────┘
 ```
 
 ## Tips for the event
