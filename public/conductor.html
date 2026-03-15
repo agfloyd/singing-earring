@@ -150,6 +150,7 @@
 </div>
 
 <script>
+// === Constants ===
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const PARTS = ['bass','tenor','alto','soprano'];
 const PART_COLORS = { soprano: '#ff6b9d', alto: '#c084fc', tenor: '#60a5fa', bass: '#34d399' };
@@ -160,20 +161,21 @@ const RANGE = {
   tenor:   [48, 67],
   bass:    [40, 60],
 };
+const PART_SUFFIXES = { bass: 'B', tenor: 'T', alto: 'A', soprano: 'S' };
 
+// === State ===
 let ws = null;
 let midiAccess = null;
 let currentInput = null;
-let heldNotes = new Set();
-let singers = []; // [{id, part}, ...]
+let heldNotes = new Set();       // physically pressed MIDI notes
+let singers = [];                // [{id, part}, ...]
+let sustainMode = false;         // sustain pedal: notes persist after release
+let modifiers = { z: false, x: false, c: false, v: false }; // ZXCV part targeting
+let partNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 }; // current note per part
+let lastAssignments = {};        // {singerId: midi} — last sent to singers
+let masterPulseTimer = null;
 
-// Sustain mode
-let sustainMode = false;
-let sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
-let sustainHeldNotes = new Set(); // physically held notes in sustain mode
-let modifiers = { z: false, x: false, c: false, v: false };
-
-// Syllable system
+// Syllable system — always per-part
 let activeSyllable = 0;
 const syllables = [
   { text: 'Aah', pulse: false },
@@ -193,8 +195,254 @@ let volHoldTimeout = null;
 let volHoldInterval = null;
 let volHoldDone = false;
 
+// BPM hold state
+let bpmHoldTimeout = null;
+let bpmHoldInterval = null;
+let bpmHoldDone = false;
+
+// === Helpers ===
+function noteName(midi) {
+  return NOTES[midi % 12] + (Math.floor(midi / 12) - 1);
+}
+
+function fitToRange(note, part) {
+  const [lo, hi] = RANGE[part];
+  while (note < lo) note += 12;
+  while (note > hi) note -= 12;
+  if (note < lo) note = lo;
+  if (note > hi) note = hi;
+  return note;
+}
+
+function getTargetParts() {
+  if (!modifiers.z && !modifiers.x && !modifiers.c && !modifiers.v) {
+    return ['bass', 'tenor', 'alto', 'soprano'];
+  }
+  const parts = [];
+  if (modifiers.z) parts.push('bass');
+  if (modifiers.x) parts.push('tenor');
+  if (modifiers.c) parts.push('alto');
+  if (modifiers.v) parts.push('soprano');
+  return parts;
+}
+
+function singerCountForPart(part) {
+  return singers.filter(s => s.part === part).length;
+}
+
+// === Core: note distribution ===
+
+// Distribute notes across targeted parts. Non-targeted parts are unchanged.
+function distributeNotes(notes, targetParts) {
+  const sorted = [...notes].sort((a, b) => a - b);
+
+  if (sorted.length === 0) {
+    for (const part of targetParts) partNotes[part] = -1;
+    return;
+  }
+
+  // Filter to parts with singers (fall back to all targeted if none have singers)
+  const activeParts = targetParts.filter(p => singerCountForPart(p) > 0);
+  const partsToUse = activeParts.length > 0 ? activeParts : targetParts;
+
+  // Sort target parts by range (low to high)
+  const partsByRange = [...partsToUse].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
+  const n = sorted.length, p = partsByRange.length;
+
+  if (n >= p) {
+    for (let pi = 0; pi < p; pi++) {
+      const ni = Math.round(pi * (n - 1) / (p - 1 || 1));
+      partNotes[partsByRange[pi]] = sorted[ni];
+    }
+  } else {
+    const base = Math.floor(p / n);
+    const remainder = p % n;
+    let partIdx = 0;
+    for (let ni = 0; ni < n; ni++) {
+      const count = base + (ni < remainder ? 1 : 0);
+      for (let j = 0; j < count; j++) {
+        partNotes[partsByRange[partIdx]] = sorted[ni];
+        partIdx++;
+      }
+    }
+  }
+}
+
+// Build per-singer assignments from partNotes
+function buildSingerAssignments() {
+  const assignments = {};
+  for (const singer of singers) {
+    const note = partNotes[singer.part];
+    assignments[singer.id] = note >= 0 ? fitToRange(note, singer.part) : -1;
+  }
+  return assignments;
+}
+
+// === Note on/off ===
+
+function noteOn(midi) {
+  heldNotes.add(midi);
+  const targetParts = getTargetParts();
+  distributeNotes(heldNotes, targetParts);
+  // In non-sustain mode, silence non-targeted parts
+  if (!sustainMode) {
+    for (const part of PARTS) {
+      if (!targetParts.includes(part)) partNotes[part] = -1;
+    }
+  }
+  updateDisplay();
+}
+
+function noteOff(midi) {
+  heldNotes.delete(midi);
+  if (sustainMode) return; // assignments persist
+  const targetParts = getTargetParts();
+  distributeNotes(heldNotes, targetParts);
+  for (const part of PARTS) {
+    if (!targetParts.includes(part)) partNotes[part] = -1;
+  }
+  updateDisplay();
+}
+
+// === Display ===
+
+function updateDisplay() {
+  const assignments = buildSingerAssignments();
+  lastAssignments = { ...assignments };
+
+  if (ws && ws.readyState === 1 && singers.length > 0) {
+    ws.send(JSON.stringify({ t: 'n', notes: assignments }));
+  }
+
+  updateMasterDisplay();
+
+  // Color piano keys by which parts are assigned to each key
+  document.querySelectorAll('.key').forEach(k => {
+    const midi = parseInt(k.dataset.midi);
+    const partsOnKey = [];
+    for (const part of PARTS) {
+      if (partNotes[part] === midi) partsOnKey.push(part);
+    }
+    if (partsOnKey.length === 0) {
+      k.style.background = '';
+    } else if (partsOnKey.length === 1) {
+      k.style.background = PART_COLORS[partsOnKey[0]];
+    } else {
+      const stops = partsOnKey.map((p, i) => {
+        const pct1 = (i / partsOnKey.length * 100).toFixed(1);
+        const pct2 = ((i + 1) / partsOnKey.length * 100).toFixed(1);
+        return `${PART_COLORS[p]} ${pct1}%, ${PART_COLORS[p]} ${pct2}%`;
+      }).join(', ');
+      k.style.background = `linear-gradient(to right, ${stops})`;
+    }
+  });
+}
+
+function updateMasterDisplay() {
+  for (const part of PARTS) {
+    const note = partNotes[part];
+    const el = document.getElementById('note' + PART_SUFFIXES[part]);
+    el.textContent = note >= 0 ? noteName(note) : '';
+  }
+  updateMasterSyllables();
+}
+
+// === Syllable system ===
+
+function getPartSyllable(part) {
+  return syllables[partSyllables[part]];
+}
+
+function anyPartPulsing() {
+  return PARTS.some(p => syllables[partSyllables[p]].pulse);
+}
+
+function setSyllable(index) {
+  activeSyllable = index;
+  const parts = getTargetParts();
+  for (const part of parts) partSyllables[part] = index;
+  // Percussive syllable cancels the note for targeted parts
+  if (syllables[index].percussive) {
+    for (const part of parts) partNotes[part] = -1;
+    updateDisplay();
+  }
+  updateIndicators();
+  sendSyllable();
+}
+
+function sendSyllable() {
+  const msg = { t: 'syl', perPart: {} };
+  for (const part of PARTS) {
+    const syl = syllables[partSyllables[part]];
+    const pd = { text: syl.text };
+    if (syl.pulse) { pd.pulse = true; pd.bpm = pulseBpm; }
+    msg.perPart[part] = pd;
+  }
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+}
+
+function updateMasterSyllables() {
+  for (const part of PARTS) {
+    const syl = getPartSyllable(part);
+    const el = document.getElementById('syl' + PART_SUFFIXES[part]);
+    if (!syl.pulse) {
+      el.style.transition = 'none';
+      el.style.opacity = '1';
+      el.textContent = syl.text;
+    }
+  }
+}
+
+function startMasterPulse() {
+  if (masterPulseTimer) { clearInterval(masterPulseTimer); masterPulseTimer = null; }
+
+  if (!anyPartPulsing()) {
+    for (const part of PARTS) {
+      const el = document.getElementById('syl' + PART_SUFFIXES[part]);
+      el.style.transition = 'none';
+      el.style.opacity = '1';
+    }
+    updateMasterSyllables();
+    return;
+  }
+
+  const intervalMs = 60000 / pulseBpm;
+  const fadeDuration = Math.max(200, intervalMs - 50);
+
+  function doPulseFlash() {
+    for (const part of PARTS) {
+      const syl = getPartSyllable(part);
+      const el = document.getElementById('syl' + PART_SUFFIXES[part]);
+      if (syl.pulse) {
+        el.textContent = syl.text;
+        el.style.transition = 'none';
+        el.style.opacity = '1';
+        void el.offsetWidth;
+        el.style.transition = `opacity ${fadeDuration}ms ease-out`;
+        el.style.opacity = '0';
+      }
+    }
+  }
+
+  updateMasterSyllables();
+  doPulseFlash();
+  masterPulseTimer = setInterval(doPulseFlash, intervalMs);
+}
+
+function updateIndicators() {
+  document.querySelectorAll('.syl-btn').forEach(btn => {
+    const idx = parseInt(btn.dataset.idx);
+    btn.classList.toggle('active', idx === activeSyllable);
+  });
+  document.getElementById('bpmControl').style.display = anyPartPulsing() ? 'flex' : 'none';
+  startMasterPulse();
+  updateMasterDisplay();
+}
+
+// === Volume system ===
+
 function adjustVolume(delta) {
-  const parts = sustainMode ? getTargetParts() : ['bass', 'tenor', 'alto', 'soprano'];
+  const parts = getTargetParts();
   for (const part of parts) {
     partVolumes[part] = Math.max(0, Math.min(100, partVolumes[part] + delta));
   }
@@ -203,7 +451,7 @@ function adjustVolume(delta) {
 }
 
 function updateVolumeBars() {
-  for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
+  for (const part of PARTS) {
     document.getElementById('vol' + PART_SUFFIXES[part]).style.height = partVolumes[part] + '%';
   }
 }
@@ -219,9 +467,7 @@ function startVolHold(delta) {
   adjustVolume(delta > 0 ? 5 : -5);
   volHoldTimeout = setTimeout(() => {
     volHoldDone = true;
-    volHoldInterval = setInterval(() => {
-      adjustVolume(delta > 0 ? 2 : -2);
-    }, 80);
+    volHoldInterval = setInterval(() => { adjustVolume(delta > 0 ? 2 : -2); }, 80);
   }, 500);
 }
 
@@ -231,302 +477,31 @@ function stopVolHold() {
   volHoldDone = false;
 }
 
-// Track last-sent voice assignments for master display
-let lastAssignments = {}; // {singerId: midi, ...}
-let masterPulseTimer = null;
+// === BPM system ===
 
-function noteName(midi) {
-  return NOTES[midi % 12] + (Math.floor(midi / 12) - 1);
+function adjustBpm(delta) {
+  pulseBpm = Math.max(30, Math.min(300, pulseBpm + delta));
+  document.getElementById('bpmInput').value = pulseBpm;
+  if (anyPartPulsing()) { startMasterPulse(); sendSyllable(); }
 }
 
-const PART_SUFFIXES = { bass: 'B', tenor: 'T', alto: 'A', soprano: 'S' };
-
-function getPartSyllable(part) {
-  return sustainMode ? syllables[partSyllables[part]] : syllables[activeSyllable];
+function startBpmHold(delta) {
+  stopBpmHold();
+  bpmHoldDone = false;
+  bpmHoldTimeout = setTimeout(() => {
+    bpmHoldDone = true;
+    bpmHoldInterval = setInterval(() => { adjustBpm(delta > 0 ? 1 : -1); }, 80);
+  }, 1000);
 }
 
-function anyPartPulsing() {
-  if (!sustainMode) return syllables[activeSyllable].pulse;
-  return ['bass', 'tenor', 'alto', 'soprano'].some(p => syllables[partSyllables[p]].pulse);
+function stopBpmHold(doInitial, delta) {
+  if (bpmHoldTimeout) { clearTimeout(bpmHoldTimeout); bpmHoldTimeout = null; }
+  if (bpmHoldInterval) { clearInterval(bpmHoldInterval); bpmHoldInterval = null; }
+  if (doInitial && !bpmHoldDone) { adjustBpm(delta); }
+  bpmHoldDone = false;
 }
 
-function updateMasterDisplay() {
-  // Show all unique notes per voice type
-  for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
-    const partSingers = singers.filter(s => s.part === part);
-    const notes = partSingers
-      .map(s => lastAssignments[s.id])
-      .filter(m => m !== undefined && m >= 0);
-    const unique = [...new Set(notes)].sort((a, b) => a - b);
-    document.getElementById('note' + PART_SUFFIXES[part]).textContent =
-      unique.map(noteName).join(' ');
-  }
-  updateMasterSyllables();
-}
-
-function updateMasterSyllables() {
-  for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
-    const syl = getPartSyllable(part);
-    const el = document.getElementById('syl' + PART_SUFFIXES[part]);
-    if (!syl.pulse) {
-      // Non-pulsing: set text and ensure full opacity
-      el.style.transition = 'none';
-      el.style.opacity = '1';
-      el.textContent = syl.text;
-    }
-    // Pulsing parts are handled by startMasterPulse timer
-  }
-}
-
-function startMasterPulse() {
-  if (masterPulseTimer) { clearInterval(masterPulseTimer); masterPulseTimer = null; }
-
-  if (!anyPartPulsing()) {
-    // No parts pulsing — reset all opacity and set text
-    for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
-      const el = document.getElementById('syl' + PART_SUFFIXES[part]);
-      el.style.transition = 'none';
-      el.style.opacity = '1';
-    }
-    updateMasterSyllables();
-    return;
-  }
-
-  const intervalMs = 60000 / pulseBpm;
-  const fadeDuration = Math.max(200, intervalMs - 50);
-
-  function doPulseFlash() {
-    for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
-      const syl = getPartSyllable(part);
-      const el = document.getElementById('syl' + PART_SUFFIXES[part]);
-      if (syl.pulse) {
-        el.textContent = syl.text;
-        el.style.transition = 'none';
-        el.style.opacity = '1';
-        void el.offsetWidth;
-        el.style.transition = `opacity ${fadeDuration}ms ease-out`;
-        el.style.opacity = '0';
-      }
-      // Non-pulsing parts keep their steady text (set by updateMasterSyllables)
-    }
-  }
-
-  updateMasterSyllables(); // set non-pulsing parts' text first
-  doPulseFlash();
-  masterPulseTimer = setInterval(doPulseFlash, intervalMs);
-}
-
-function fitToRange(note, part) {
-  const [lo, hi] = RANGE[part];
-  while (note < lo) note += 12;
-  while (note > hi) note -= 12;
-  if (note < lo) note = lo;
-  if (note > hi) note = hi;
-  return note;
-}
-
-// Voice assignment: distribute singers evenly across notes, lower-range singers on lower notes
-function assignVoices(notes) {
-  const result = {};
-  if (singers.length === 0) return result;
-
-  if (notes.length === 0) {
-    for (const s of singers) result[s.id] = -1;
-    return result;
-  }
-
-  const sorted = [...notes].sort((a, b) => a - b);
-  // Sort singers by their voice type's midpoint (low to high)
-  const sortedSingers = [...singers].sort((a, b) => RANGE_MID[a.part] - RANGE_MID[b.part]);
-  const n = sorted.length, p = sortedSingers.length;
-
-  if (n >= p) {
-    // More notes than singers: spread singers proportionally across notes
-    for (let si = 0; si < p; si++) {
-      const ni = Math.round(si * (n - 1) / (p - 1 || 1));
-      result[sortedSingers[si].id] = fitToRange(sorted[ni], sortedSingers[si].part);
-    }
-  } else {
-    // More singers than notes: distribute evenly, lower-range singers on lower notes
-    const base = Math.floor(p / n);
-    const remainder = p % n;
-    let singerIdx = 0;
-    for (let ni = 0; ni < n; ni++) {
-      const count = base + (ni < remainder ? 1 : 0);
-      for (let j = 0; j < count; j++) {
-        const singer = sortedSingers[singerIdx];
-        result[singer.id] = fitToRange(sorted[ni], singer.part);
-        singerIdx++;
-      }
-    }
-  }
-
-  return result;
-}
-
-function updateDisplay() {
-  const notes = [...heldNotes].sort((a, b) => a - b);
-
-  if (notes.length === 0) {
-    const silentAssignments = {};
-    for (const s of singers) silentAssignments[s.id] = -1;
-    if (ws && ws.readyState === 1 && singers.length > 0) {
-      ws.send(JSON.stringify({ t: 'n', notes: silentAssignments }));
-    }
-    lastAssignments = silentAssignments;
-    updateMasterDisplay();
-    document.querySelectorAll('.key').forEach(k => { k.style.background = ''; });
-    return;
-  }
-
-  const assignments = assignVoices(notes);
-  lastAssignments = { ...assignments };
-
-  if (ws && ws.readyState === 1 && singers.length > 0) {
-    ws.send(JSON.stringify({ t: 'n', notes: assignments }));
-  }
-
-  updateMasterDisplay();
-
-  // Color piano keys by voice type
-  document.querySelectorAll('.key').forEach(k => {
-    const midi = parseInt(k.dataset.midi);
-    const isBlack = k.classList.contains('black');
-    if (!heldNotes.has(midi)) { k.style.background = ''; return; }
-
-    const partsOnKey = new Set();
-    for (const singer of singers) {
-      const assigned = lastAssignments[singer.id];
-      if (assigned >= 0 && assigned % 12 === midi % 12) {
-        partsOnKey.add(singer.part);
-      }
-    }
-
-    const parts = [...partsOnKey];
-    if (parts.length === 0) {
-      k.style.background = isBlack ? '#c23152' : '#e94560';
-    } else if (parts.length === 1) {
-      k.style.background = PART_COLORS[parts[0]];
-    } else {
-      const stops = parts.map((p, i) => {
-        const pct1 = (i / parts.length * 100).toFixed(1);
-        const pct2 = ((i + 1) / parts.length * 100).toFixed(1);
-        return `${PART_COLORS[p]} ${pct1}%, ${PART_COLORS[p]} ${pct2}%`;
-      }).join(', ');
-      k.style.background = `linear-gradient(to right, ${stops})`;
-    }
-  });
-}
-
-function noteOn(midi) {
-  if (sustainMode) {
-    sustainHeldNotes.add(midi);
-    const parts = getTargetParts();
-    distributeSustainNotes(parts);
-    updateSustainDisplay();
-  } else {
-    heldNotes.add(midi);
-    updateDisplay();
-  }
-}
-function noteOff(midi) {
-  if (sustainMode) {
-    sustainHeldNotes.delete(midi);
-    // Don't redistribute — sustain means the last assignment sticks
-    return;
-  }
-  heldNotes.delete(midi);
-  updateDisplay();
-}
-
-// Distribute currently held notes across targeted parts (sustain mode)
-function distributeSustainNotes(targetParts) {
-  const notes = [...sustainHeldNotes].sort((a, b) => a - b);
-  if (notes.length === 0) return;
-
-  // Filter to parts with singers (fall back to all targeted if none have singers)
-  const activeParts = targetParts.filter(p => (singerCounts[p] || 0) > 0);
-  const partsToUse = activeParts.length > 0 ? activeParts : targetParts;
-
-  // Sort target parts by range (low to high)
-  const partsByRange = [...partsToUse].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
-  const n = notes.length, p = partsByRange.length;
-
-  if (n >= p) {
-    // More notes than parts: spread parts proportionally across notes
-    for (let pi = 0; pi < p; pi++) {
-      const ni = Math.round(pi * (n - 1) / (p - 1 || 1));
-      sustainedNotes[partsByRange[pi]] = notes[ni];
-    }
-  } else {
-    // More parts than notes: distribute evenly, lower parts on lower notes
-    const base = Math.floor(p / n);
-    const remainder = p % n;
-    let partIdx = 0;
-    for (let ni = 0; ni < n; ni++) {
-      const count = base + (ni < remainder ? 1 : 0);
-      for (let j = 0; j < count; j++) {
-        sustainedNotes[partsByRange[partIdx]] = notes[ni];
-        partIdx++;
-      }
-    }
-  }
-}
-
-function getTargetParts() {
-  // If no modifier held, target all parts
-  if (!modifiers.z && !modifiers.x && !modifiers.c && !modifiers.v) {
-    return ['bass', 'tenor', 'alto', 'soprano'];
-  }
-  // Otherwise, build list from held modifiers
-  const parts = [];
-  if (modifiers.z) parts.push('bass');
-  if (modifiers.x) parts.push('tenor');
-  if (modifiers.c) parts.push('alto');
-  if (modifiers.v) parts.push('soprano');
-  return parts;
-}
-
-function updateSustainDisplay() {
-  // Build per-singer assignments from per-voice-type sustained notes
-  const assignments = {};
-  for (const singer of singers) {
-    const sustained = sustainedNotes[singer.part];
-    assignments[singer.id] = sustained >= 0 ? fitToRange(sustained, singer.part) : -1;
-  }
-
-  lastAssignments = { ...assignments };
-
-  if (ws && ws.readyState === 1 && singers.length > 0) {
-    ws.send(JSON.stringify({ t: 'n', notes: assignments }));
-  }
-
-  updateMasterDisplay();
-
-  document.querySelectorAll('.key').forEach(k => {
-    const midi = parseInt(k.dataset.midi);
-    const partsOnKey = new Set();
-    for (const singer of singers) {
-      const assigned = lastAssignments[singer.id];
-      if (assigned !== undefined && assigned === midi) {
-        partsOnKey.add(singer.part);
-      }
-    }
-    const parts = [...partsOnKey];
-    if (parts.length === 0) {
-      k.style.background = '';
-    } else if (parts.length === 1) {
-      k.style.background = PART_COLORS[parts[0]];
-    } else {
-      const stops = parts.map((p, i) => {
-        const pct1 = (i / parts.length * 100).toFixed(1);
-        const pct2 = ((i + 1) / parts.length * 100).toFixed(1);
-        return `${PART_COLORS[p]} ${pct1}%, ${PART_COLORS[p]} ${pct2}%`;
-      }).join(', ');
-      k.style.background = `linear-gradient(to right, ${stops})`;
-    }
-  });
-}
+// === Sustain toggle ===
 
 function toggleSustain() {
   sustainMode = !sustainMode;
@@ -535,137 +510,55 @@ function toggleSustain() {
   el.style.background = sustainMode ? '#e94560' : '#222';
   el.style.color = sustainMode ? '#fff' : '#888';
 
-  if (sustainMode) {
-    heldNotes.clear();
-    heldKeyboard.clear();
-    sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
-    sustainHeldNotes.clear();
-    partSyllables = { bass: activeSyllable, tenor: activeSyllable, alto: activeSyllable, soprano: activeSyllable };
-    updateSustainDisplay();
-  } else {
-    sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
-    sustainHeldNotes.clear();
-    updateDisplay();
-  }
-  updateSustainHighlight();
-}
-
-function updateSustainHighlight() {
-  const columns = document.querySelectorAll('.part-column');
-  // Show/hide modifier symbols based on sustain mode
-  document.querySelectorAll('.part-modifier').forEach(el => {
-    el.style.display = sustainMode ? 'block' : 'none';
-  });
   if (!sustainMode) {
-    columns.forEach(c => c.style.borderColor = 'transparent');
-    return;
+    // Turning off: if no keys held, silence everything
+    if (heldNotes.size === 0) {
+      for (const part of PARTS) partNotes[part] = -1;
+      updateDisplay();
+    } else {
+      // Keys still held: redistribute to all parts
+      distributeNotes(heldNotes, PARTS);
+      updateDisplay();
+    }
   }
+  // Turning on: current assignments persist, no state change needed
+
+  updateTargetHighlight();
+}
+
+// === ZXCV target highlighting ===
+
+function updateTargetHighlight() {
+  const anyModifier = modifiers.z || modifiers.x || modifiers.c || modifiers.v;
+  document.querySelectorAll('.part-modifier').forEach(el => {
+    el.style.display = anyModifier ? 'block' : 'none';
+  });
   const targetParts = getTargetParts();
-  columns.forEach(c => {
+  document.querySelectorAll('.part-column').forEach(c => {
     const part = c.dataset.part;
-    c.style.borderColor = targetParts.includes(part) ? PART_COLORS[part] : 'transparent';
+    c.style.borderColor = anyModifier && targetParts.includes(part)
+      ? PART_COLORS[part] : 'transparent';
   });
 }
 
-// --- Syllable system ---
-function setSyllable(index) {
-  activeSyllable = index;
-  if (sustainMode) {
-    const parts = getTargetParts();
-    for (const part of parts) { partSyllables[part] = index; }
-    // Percussive syllable cancels the note for targeted parts
-    if (syllables[index].percussive) {
-      for (const part of parts) { sustainedNotes[part] = -1; }
-      updateSustainDisplay();
-    }
-  }
-  updateIndicators();
-  sendSyllable();
-}
+// === Syllable text editing ===
 
-function sendSyllable() {
-  if (sustainMode) {
-    // Send per-part syllable data
-    const msg = { t: 'syl', perPart: {} };
-    for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
-      const syl = syllables[partSyllables[part]];
-      const pd = { text: syl.text };
-      if (syl.pulse) { pd.pulse = true; pd.bpm = pulseBpm; }
-      msg.perPart[part] = pd;
-    }
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
-  } else {
-    const syl = syllables[activeSyllable];
-    const msg = { t: 'syl', text: syl.text };
-    if (syl.pulse) { msg.pulse = true; msg.bpm = pulseBpm; }
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
-  }
-}
-
-function adjustBpm(delta) {
-  pulseBpm = Math.max(30, Math.min(300, pulseBpm + delta));
-  document.getElementById('bpmInput').value = pulseBpm;
-  if (anyPartPulsing()) { startMasterPulse(); sendSyllable(); }
-}
-
-// BPM hold-to-fine-adjust state
-let bpmHoldTimeout = null;
-let bpmHoldInterval = null;
-let bpmHoldDone = false; // true if we already did the initial ±5 jump
-
-function startBpmHold(delta) {
-  stopBpmHold();
-  bpmHoldDone = false;
-  // After 1 second, start rapid ±1 adjustments
-  bpmHoldTimeout = setTimeout(() => {
-    bpmHoldDone = true;
-    bpmHoldInterval = setInterval(() => {
-      adjustBpm(delta > 0 ? 1 : -1);
-    }, 80);
-  }, 1000);
-}
-
-function stopBpmHold(doInitial, delta) {
-  if (bpmHoldTimeout) { clearTimeout(bpmHoldTimeout); bpmHoldTimeout = null; }
-  if (bpmHoldInterval) { clearInterval(bpmHoldInterval); bpmHoldInterval = null; }
-  // If released before the hold kicked in, do the normal ±5 jump
-  if (doInitial && !bpmHoldDone) { adjustBpm(delta); }
-  bpmHoldDone = false;
-}
-
-function updateIndicators() {
-  // Syllable buttons
-  document.querySelectorAll('.syl-btn').forEach(btn => {
-    const idx = parseInt(btn.dataset.idx);
-    btn.classList.toggle('active', idx === activeSyllable);
-  });
-
-  // BPM control visibility — show if any part is pulsing
-  document.getElementById('bpmControl').style.display = anyPartPulsing() ? 'flex' : 'none';
-
-  startMasterPulse();
-  updateMasterDisplay();
-}
-
-// Handle syllable text editing
 document.querySelectorAll('.syl-input').forEach(input => {
   input.addEventListener('input', (e) => {
     const idx = parseInt(e.target.dataset.idx);
     syllables[idx].text = e.target.value || '';
-    // Resend if this syllable is active for any part
-    if (idx === activeSyllable || (sustainMode && Object.values(partSyllables).includes(idx))) {
+    if (idx === activeSyllable || Object.values(partSyllables).includes(idx)) {
       sendSyllable();
       updateMasterSyllables();
     }
   });
-  // Don't let clicking the input trigger setSyllable via the parent onclick
   input.addEventListener('click', (e) => e.stopPropagation());
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
   });
 });
 
-// Handle BPM input editing
+// BPM input editing
 const bpmInputEl = document.getElementById('bpmInput');
 bpmInputEl.addEventListener('input', (e) => {
   e.target.value = e.target.value.replace(/[^0-9]/g, '');
@@ -684,7 +577,8 @@ bpmInputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
 });
 
-// WebSocket
+// === WebSocket ===
+
 function createRoom() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${proto}//${location.host}`);
@@ -705,19 +599,17 @@ function createRoom() {
       initMIDI();
       buildRangeIndicators();
       updateIndicators();
-      // Send initial syllable and volume state
       sendSyllable();
       sendVolume();
     } else if (msg.t === 'r') {
       singers = msg.singers || [];
-      const counts = {soprano: 0, alto: 0, tenor: 0, bass: 0};
+      const counts = { soprano: 0, alto: 0, tenor: 0, bass: 0 };
       for (const s of singers) counts[s.part] = (counts[s.part] || 0) + 1;
       document.getElementById('countS').textContent = counts.soprano;
       document.getElementById('countA').textContent = counts.alto;
       document.getElementById('countT').textContent = counts.tenor;
       document.getElementById('countB').textContent = counts.bass;
-      if (sustainMode) { updateSustainDisplay(); }
-      else if (heldNotes.size > 0) { updateDisplay(); }
+      updateDisplay();
     }
   };
   ws.onclose = () => { document.getElementById('status').textContent = 'Disconnected'; };
@@ -727,7 +619,8 @@ if (new URLSearchParams(location.search).has('test')) {
   createRoom();
 }
 
-// MIDI
+// === MIDI ===
+
 async function initMIDI() {
   const statusEl = document.getElementById('midiStatus');
   const selectEl = document.getElementById('midiSelect');
@@ -739,7 +632,6 @@ async function initMIDI() {
       selectEl.innerHTML = '';
       const inputs = [...midiAccess.inputs.values()];
 
-      // Always add laptop keyboard option first
       const kbOpt = document.createElement('option');
       kbOpt.value = '';
       kbOpt.textContent = 'Laptop keyboard (on-screen)';
@@ -752,7 +644,6 @@ async function initMIDI() {
         selectEl.appendChild(opt);
       }
 
-      // Auto-select first MIDI device if available, otherwise stay on keyboard
       if (inputs.length > 0) {
         selectEl.value = inputs[0].id;
         selectInput(inputs[0].id);
@@ -789,13 +680,13 @@ function onMIDIMessage(e) {
   else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) noteOff(note);
 }
 
-// Fallback on-screen keyboard (C3 to C5)
+// === On-screen piano ===
+
 const pointerToMidi = new Map();
 
 function buildPiano() {
   const piano = document.getElementById('piano');
-  const startMidi = 48; // C3
-  const endMidi = 72;   // C5
+  const startMidi = 48, endMidi = 72;
   const blackKeys = new Set([1,3,6,8,10]);
 
   for (let midi = startMidi; midi <= endMidi; midi++) {
@@ -808,7 +699,6 @@ function buildPiano() {
     const nameLabel = document.createTextNode(isBlack ? '' : NOTES[semitone] + (Math.floor(midi / 12) - 1));
     key.appendChild(nameLabel);
 
-    // Show keyboard shortcut if mapped
     const bindKey = Object.entries(KEY_TO_MIDI).find(([k, m]) => m === midi);
     if (bindKey) {
       const bindEl = document.createElement('span');
@@ -883,32 +773,17 @@ function buildRangeIndicators() {
   }
 }
 
-// Keyboard mapping: QWERTY row = white keys (shifted +2 whole steps), number row = black keys
-// C3 and D3 visible on piano but no keyboard shortcut
+// === Keyboard mapping ===
+
 const KEY_TO_MIDI = {
-  // C3-D#3
-  '`': 48,                      // C3
-  '1': 49,                      // C#3
-  'd': 50,                      // D3
-  '2': 51,                      // D#3
-  // E3-B3
-  'q': 52,  '3': 54,           // E3, F#3
-  'w': 53,  '4': 56,           // F3, G#3
-  'e': 55,  '5': 58,           // G3, A#3
-  'r': 57,                      // A3
-  't': 59,                      // B3
-  // C4-C5
-  'y': 60,  '7': 61,           // C4, C#4
-  'u': 62,  '8': 63,           // D4, D#4
-  'i': 64,                      // E4
-  'o': 65,  '0': 66,           // F4, F#4
-  'p': 67,  '-': 68,           // G4, G#4
-  '[': 69,  '=': 70,           // A4, A#4
-  ']': 71,                      // B4
-  '\\': 72,                     // C5
+  '`': 48, '1': 49, 'd': 50, '2': 51,
+  'q': 52, '3': 54, 'w': 53, '4': 56,
+  'e': 55, '5': 58, 'r': 57, 't': 59,
+  'y': 60, '7': 61, 'u': 62, '8': 63,
+  'i': 64, 'o': 65, '0': 66, 'p': 67,
+  '-': 68, '[': 69, '=': 70, ']': 71, '\\': 72,
 };
 
-// Map physical key codes to KEY_TO_MIDI keys (needed when modifiers alter e.key)
 const CODE_TO_KEY = {
   'Backquote': '`', 'Digit1': '1', 'KeyD': 'd', 'Digit2': '2',
   'KeyQ': 'q', 'KeyW': 'w', 'KeyE': 'e', 'KeyR': 'r', 'KeyT': 't',
@@ -920,12 +795,14 @@ const CODE_TO_KEY = {
 
 const heldKeyboard = new Set();
 
+// === Keyboard handlers ===
+
 document.addEventListener('keydown', (e) => {
-  // Track ZXCV modifier keys
-  if (e.code === 'KeyZ') { modifiers.z = true; if (sustainMode) updateSustainHighlight(); return; }
-  if (e.code === 'KeyX') { modifiers.x = true; if (sustainMode) updateSustainHighlight(); return; }
-  if (e.code === 'KeyC') { modifiers.c = true; if (sustainMode) updateSustainHighlight(); return; }
-  if (e.code === 'KeyV') { modifiers.v = true; if (sustainMode) updateSustainHighlight(); return; }
+  // ZXCV modifier keys — always active
+  if (e.code === 'KeyZ') { modifiers.z = true; updateTargetHighlight(); return; }
+  if (e.code === 'KeyX') { modifiers.x = true; updateTargetHighlight(); return; }
+  if (e.code === 'KeyC') { modifiers.c = true; updateTargetHighlight(); return; }
+  if (e.code === 'KeyV') { modifiers.v = true; updateTargetHighlight(); return; }
 
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
   if (e.repeat) return;
@@ -946,7 +823,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === '.') { e.preventDefault(); startBpmHold(5); return; }
   if (e.key === ' ') { e.preventDefault(); toggleSustain(); return; }
 
-  // Use e.code to reliably get the physical key regardless of modifiers
+  // Note keys
   const key = e.key.toLowerCase();
   const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];
   if (midi !== undefined) {
@@ -962,11 +839,11 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keyup', (e) => {
-  // Track ZXCV modifier keys
-  if (e.code === 'KeyZ') { modifiers.z = false; if (sustainMode) updateSustainHighlight(); return; }
-  if (e.code === 'KeyX') { modifiers.x = false; if (sustainMode) updateSustainHighlight(); return; }
-  if (e.code === 'KeyC') { modifiers.c = false; if (sustainMode) updateSustainHighlight(); return; }
-  if (e.code === 'KeyV') { modifiers.v = false; if (sustainMode) updateSustainHighlight(); return; }
+  // ZXCV modifier keys
+  if (e.code === 'KeyZ') { modifiers.z = false; updateTargetHighlight(); return; }
+  if (e.code === 'KeyX') { modifiers.x = false; updateTargetHighlight(); return; }
+  if (e.code === 'KeyC') { modifiers.c = false; updateTargetHighlight(); return; }
+  if (e.code === 'KeyV') { modifiers.v = false; updateTargetHighlight(); return; }
 
   if (e.code === 'Digit9' || e.code === 'Digit6') { stopVolHold(); return; }
   if (e.key === ',') { stopBpmHold(true, -5); return; }

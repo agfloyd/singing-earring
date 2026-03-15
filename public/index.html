@@ -485,16 +485,10 @@ function connectWebSocket(code, isReconnect) {
 
     } else if (msg.t === 'syl') {
       if (msg.perPart && msg.perPart[selectedPart]) {
-        // Per-part syllable data (sustain mode)
         const pd = msg.perPart[selectedPart];
         currentSyllable = pd.text;
         isPulsing = !!pd.pulse;
         if (pd.bpm) pulseBpm = pd.bpm;
-      } else {
-        // Global syllable (normal mode)
-        currentSyllable = msg.text;
-        isPulsing = !!msg.pulse;
-        if (msg.bpm) pulseBpm = msg.bpm;
       }
       updateSyllableDisplay();
     }
