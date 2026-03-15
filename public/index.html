@@ -30,7 +30,7 @@
 
   /* Singing screen */
   #singScreen { display: none; width: 100%; max-width: 360px; text-align: center; }
-  .current-note { font-size: 6rem; font-weight: bold; line-height: 1; margin: 10px 0; transition: color 0.1s; }
+  .current-note { font-size: 6rem; font-weight: bold; line-height: 1; margin: 10px 0; transition: color 0.1s; height: 6rem; overflow: hidden; display: flex; align-items: center; justify-content: center; }
   .current-note.soprano { color: #ff6b9d; }
   .current-note.alto { color: #c084fc; }
   .current-note.tenor { color: #60a5fa; }
@@ -51,7 +51,7 @@
   .part-switch-btn.active { border-color: currentColor; }
 
   /* Syllable display */
-  .syllable-display { font-size: 2.5rem; font-weight: bold; color: #fbbf24; margin: 8px 0; min-height: 3rem; }
+  .syllable-display { font-size: 2.5rem; font-weight: bold; color: #fbbf24; margin: 8px 0; height: 3rem; overflow: hidden; }
 
   /* Mini piano */
   .mini-piano-wrapper { margin: 12px 0; }
@@ -141,6 +141,7 @@ let filterNode = null;
 let currentMidi = -1;
 let wakeLock = null;
 let roomCode = null;
+let myId = null;
 let intentionalClose = false;
 let reconnectAttempts = 0;
 const MAX_RECONNECT = 10;
@@ -435,6 +436,7 @@ function connectWebSocket(code, isReconnect) {
 
     if (msg.t === 'joined') {
       roomCode = msg.code;
+      myId = msg.id;
       document.getElementById('joinScreen').style.display = 'none';
       document.getElementById('singScreen').style.display = 'block';
       updatePartDisplay();
@@ -454,15 +456,17 @@ function connectWebSocket(code, isReconnect) {
       }
 
     } else if (msg.t === 'n') {
-      const partKey = { soprano: 's', alto: 'a', tenor: 'e', bass: 'b' }[selectedPart];
-      const midi = msg[partKey];
-      playNote(midi);
-      updateNoteDisplay(midi);
+      const midi = msg.notes[myId];
+      if (midi !== undefined) {
+        playNote(midi);
+        updateNoteDisplay(midi);
+      }
 
     } else if (msg.t === 'r') {
-      const c = msg.singers;
+      const counts = {soprano: 0, alto: 0, tenor: 0, bass: 0};
+      for (const s of msg.singers) counts[s.part] = (counts[s.part] || 0) + 1;
       document.getElementById('singerCounts').textContent =
-        `S:${c.soprano||0}  A:${c.alto||0}  T:${c.tenor||0}  B:${c.bass||0}`;
+        `S:${counts.soprano}  A:${counts.alto}  T:${counts.tenor}  B:${counts.bass}`;
 
     } else if (msg.t === 'ended') {
       intentionalClose = true;
