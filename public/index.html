@@ -73,10 +73,6 @@
   .room-info { font-size: 0.85rem; color: #666; margin-top: 4px; }
   .singer-counts { display: flex; gap: 12px; justify-content: center; margin-top: 8px; font-size: 0.8rem; color: #666; }
 
-  /* Rub overlay */
-  .rub-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 100; align-items: center; justify-content: center; flex-direction: column; }
-  .rub-overlay.active { display: flex; }
-  .rub-text { font-size: 2rem; font-weight: bold; color: #fbbf24; text-align: center; padding: 20px; }
 </style>
 </head>
 <body>
@@ -125,9 +121,6 @@
   <div class="room-info" id="roomInfo"></div>
 </div>
 
-<div class="rub-overlay" id="rubOverlay">
-  <div class="rub-text">Rub hands together<br>continuously</div>
-</div>
 
 <script>
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -157,12 +150,14 @@ let isMuted = false;
 let muteMode = 'manual';
 let autoMuteTimer = null;
 
-// Syllable & rub state
+// Volume state
+let partVolume = 0.5;
+
+// Syllable state
 let currentSyllable = 'Aah';
 let isPulsing = false;
 let pulseBpm = 100;
 let pulseTimer = null;
-let lastRubParts = [];
 
 function noteName(midi) {
   if (midi < 0) return '---';
@@ -200,9 +195,6 @@ function switchPart(part) {
   selectedPart = part;
   updatePartDisplay();
   buildMiniPiano();
-  // Re-evaluate rub for new part
-  const isRubbing = lastRubParts.includes(selectedPart);
-  document.getElementById('rubOverlay').classList.toggle('active', isRubbing);
   updateSyllableDisplay();
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify({ t: 'part', part }));
@@ -249,15 +241,11 @@ function updateSyllableDisplay() {
   // Clear any existing pulse
   if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null; }
 
-  // Rub overrides syllable
-  if (lastRubParts.includes(selectedPart)) {
-    el.textContent = 'Shh';
-    return;
-  }
-
   if (isPulsing) {
     startPulse();
   } else {
+    el.style.transition = 'none';
+    el.style.opacity = '1';
     el.textContent = currentSyllable;
   }
 }
@@ -266,17 +254,25 @@ function startPulse() {
   if (pulseTimer) clearInterval(pulseTimer);
   const el = document.getElementById('syllableDisplay');
   const intervalMs = 60000 / pulseBpm;
+  const fadeDuration = Math.max(200, intervalMs - 50);
 
-  // Show immediately
+  // Flash on immediately then fade
   el.textContent = currentSyllable;
+  el.style.transition = 'none';
+  el.style.opacity = '1';
+  void el.offsetWidth;
+  el.style.transition = `opacity ${fadeDuration}ms ease-out`;
+  el.style.opacity = '0';
 
   pulseTimer = setInterval(() => {
-    el.textContent = currentSyllable;
-    setTimeout(() => {
-      if (isPulsing && !lastRubParts.includes(selectedPart)) {
-        el.textContent = '';
-      }
-    }, 250);
+    if (isPulsing) {
+      el.textContent = currentSyllable;
+      el.style.transition = 'none';
+      el.style.opacity = '1';
+      void el.offsetWidth;
+      el.style.transition = `opacity ${fadeDuration}ms ease-out`;
+      el.style.opacity = '0';
+    }
   }, intervalMs);
 }
 
@@ -291,7 +287,7 @@ function toggleMute() {
     if (gainNode && audioCtx) gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02);
   } else {
     if (currentMidi >= 0 && gainNode && audioCtx) {
-      gainNode.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
+      gainNode.gain.setTargetAtTime(partVolume, audioCtx.currentTime, 0.01);
     }
   }
 }
@@ -386,7 +382,7 @@ function playNote(midi) {
   }
 
   if (!isMuted) {
-    gainNode.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
+    gainNode.gain.setTargetAtTime(partVolume, audioCtx.currentTime, 0.01);
   }
 
   if (muteMode === 'auto') {
@@ -394,7 +390,7 @@ function playNote(midi) {
     isMuted = false;
     document.getElementById('muteBtn').classList.remove('muted');
     document.getElementById('muteBtn').textContent = 'Mute';
-    gainNode.gain.setTargetAtTime(1.0, audioCtx.currentTime, 0.01);
+    gainNode.gain.setTargetAtTime(partVolume, audioCtx.currentTime, 0.01);
 
     autoMuteTimer = setTimeout(() => {
       gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.5);
@@ -474,16 +470,28 @@ function connectWebSocket(code, isReconnect) {
       document.getElementById('connStatus').className = 'conn-status disconnected';
       if (gainNode && audioCtx) gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.03);
 
-    } else if (msg.t === 'rub') {
-      lastRubParts = msg.parts || [];
-      const isRubbing = lastRubParts.includes(selectedPart);
-      document.getElementById('rubOverlay').classList.toggle('active', isRubbing);
-      updateSyllableDisplay();
+    } else if (msg.t === 'vol') {
+      const vol = msg[selectedPart];
+      if (vol !== undefined) {
+        partVolume = vol / 100;
+        if (gainNode && audioCtx && currentMidi >= 0 && !isMuted) {
+          gainNode.gain.setTargetAtTime(partVolume, audioCtx.currentTime, 0.05);
+        }
+      }
 
     } else if (msg.t === 'syl') {
-      currentSyllable = msg.text;
-      isPulsing = !!msg.pulse;
-      if (msg.bpm) pulseBpm = msg.bpm;
+      if (msg.perPart && msg.perPart[selectedPart]) {
+        // Per-part syllable data (sustain mode)
+        const pd = msg.perPart[selectedPart];
+        currentSyllable = pd.text;
+        isPulsing = !!pd.pulse;
+        if (pd.bpm) pulseBpm = pd.bpm;
+      } else {
+        // Global syllable (normal mode)
+        currentSyllable = msg.text;
+        isPulsing = !!msg.pulse;
+        if (msg.bpm) pulseBpm = msg.bpm;
+      }
       updateSyllableDisplay();
     }
   };

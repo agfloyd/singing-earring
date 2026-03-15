@@ -11,13 +11,21 @@
   .room-code { font-size: 3rem; font-weight: bold; letter-spacing: 0.3em; color: #0f3460; background: #e94560; padding: 10px 24px; border-radius: 12px; display: inline-block; margin: 10px 0; }
   .section { background: #16213e; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
   .section h2 { font-size: 1rem; color: #e94560; margin-bottom: 8px; }
-  .master-display { display: flex; gap: 0; margin-top: 12px; }
-  .part-column { flex: 1; text-align: center; padding: 12px 8px; border-right: 1px solid rgba(255,255,255,0.05); border: 3px solid transparent; border-radius: 12px; transition: border-color 0.1s; }
-  .part-column:last-child { border-right: none; }
-  .part-column .part-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.6; }
+  .master-display { display: flex; gap: 0; margin-top: 12px; overflow: visible; align-items: stretch; }
+  .vol-controls { display: flex; flex-direction: column; justify-content: center; gap: 6px; margin-right: 6px; flex-shrink: 0; }
+  .vol-btn { width: 36px; height: 72px; border-radius: 6px; background: #222; border: none; color: #888; font-size: 1.2rem; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; padding: 2px 0; }
+  .vol-btn:active { background: #333; }
+  .vol-btn .vol-key { font-size: 1.2rem; color: rgba(255,255,255,0.35); font-weight: bold; }
+  .part-column { position: relative; flex: 1; text-align: center; padding: 12px 8px; margin: 0 3px; border: 3px solid transparent; border-radius: 12px; transition: border-color 0.1s; min-width: 0; box-sizing: border-box; }
+  .part-column:first-child { margin-left: 0; }
+  .part-column:last-child { margin-right: 0; }
+  .part-column .part-label { font-size: 1.5rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.6; }
+  .part-column .part-modifier { font-size: 1.5rem; opacity: 0.4; margin-top: 2px; display: none; }
   .part-column .part-count { font-size: 1.4rem; font-weight: bold; }
   .part-column .part-syllable { font-size: 2rem; font-weight: bold; margin: 8px 0 4px; min-height: 2.4rem; }
   .part-column .part-note { font-size: 2.2rem; font-weight: 600; min-height: 2.6rem; opacity: 0.7; }
+  .part-column .vol-bar-wrap { position: absolute; top: 8px; bottom: 8px; right: 6px; width: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
+  .part-column .vol-bar { position: absolute; bottom: 0; width: 100%; border-radius: 4px; transition: height 0.1s; }
   .midi-select { background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 8px 12px; border-radius: 8px; font-size: 1rem; width: 100%; }
   .midi-status { font-size: 0.85rem; color: #888; margin-top: 6px; }
   .piano-wrapper { position: relative; margin-top: 10px; }
@@ -34,15 +42,14 @@
   button:hover { background: #c23152; }
   /* Indicator controls */
   .controls-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-  .sustain-toggle { padding: 6px 14px; border-radius: 8px; background: #222; font-size: 0.85rem; cursor: pointer; color: #888; transition: all 0.15s; }
-  .rub-indicator { padding: 6px 14px; border-radius: 8px; background: #222; font-size: 0.85rem; cursor: pointer; color: #888; transition: all 0.15s; }
-  .syl-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 6px; background: #222; cursor: pointer; font-size: 0.85rem; color: #888; transition: all 0.15s; border: 2px solid transparent; }
+  .sustain-toggle { padding: 2px 8px; border-radius: 6px; background: #222; font-size: 1.8rem; cursor: pointer; color: #888; transition: all 0.15s; }
+  .syl-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: #222; cursor: pointer; font-size: 1.8rem; color: #888; transition: all 0.15s; border: 2px solid transparent; }
   .syl-btn.active { background: #e94560; color: white; border-color: #e94560; }
-  .syl-key { font-size: 0.6rem; color: rgba(255,255,255,0.35); }
+  .syl-key { font-size: 1.8rem; color: rgba(255,255,255,0.35); }
   .syl-input { background: transparent; border: none; color: inherit; font: inherit; width: 3.5em; text-align: center; outline: none; padding: 0; }
   .syl-input:focus { border-bottom: 1px solid currentColor; }
-  .bpm-control { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #888; }
-  .bpm-control button { padding: 4px 10px; font-size: 0.85rem; border-radius: 4px; }
+  .bpm-control { display: flex; align-items: center; gap: 8px; font-size: 1.8rem; color: #888; }
+  .bpm-control button { padding: 2px 8px; font-size: 1.8rem; border-radius: 6px; }
   .bpm-input { background: transparent; border: none; border-bottom: 1px solid #555; color: #eee; font: inherit; width: 3em; text-align: center; outline: none; }
 </style>
 </head>
@@ -56,32 +63,45 @@
 </div>
 
 <div id="roomInfo" class="section" style="display:none">
+  <div id="singerUrl" style="font-size: 1.3rem; color: #888; margin-bottom: 8px;"></div>
   <h2>Room Code</h2>
   <div class="room-code" id="roomCode"></div>
   <div class="master-display">
+    <div class="vol-controls">
+      <div class="vol-btn" onclick="adjustVolume(5)">▲<span class="vol-key">9</span></div>
+      <div class="vol-btn" onclick="adjustVolume(-5)">▼<span class="vol-key">6</span></div>
+    </div>
     <div class="part-column" data-part="bass" style="color: #34d399;">
       <div class="part-label">Bass</div>
+      <div class="part-modifier">⇧</div>
       <div class="part-count" id="countB">0</div>
       <div class="part-syllable" id="sylB"></div>
       <div class="part-note" id="noteB"></div>
+      <div class="vol-bar-wrap"><div class="vol-bar" id="volB" style="height:50%;background:#34d399;"></div></div>
     </div>
     <div class="part-column" data-part="tenor" style="color: #60a5fa;">
       <div class="part-label">Tenor</div>
+      <div class="part-modifier">⌃</div>
       <div class="part-count" id="countT">0</div>
       <div class="part-syllable" id="sylT"></div>
       <div class="part-note" id="noteT"></div>
+      <div class="vol-bar-wrap"><div class="vol-bar" id="volT" style="height:50%;background:#60a5fa;"></div></div>
     </div>
     <div class="part-column" data-part="alto" style="color: #c084fc;">
       <div class="part-label">Alto</div>
+      <div class="part-modifier">⌥</div>
       <div class="part-count" id="countA">0</div>
       <div class="part-syllable" id="sylA"></div>
       <div class="part-note" id="noteA"></div>
+      <div class="vol-bar-wrap"><div class="vol-bar" id="volA" style="height:50%;background:#c084fc;"></div></div>
     </div>
     <div class="part-column" data-part="soprano" style="color: #ff6b9d;">
       <div class="part-label">Soprano</div>
+      <div class="part-modifier">⌘</div>
       <div class="part-count" id="countS">0</div>
       <div class="part-syllable" id="sylS"></div>
       <div class="part-note" id="noteS"></div>
+      <div class="vol-bar-wrap"><div class="vol-bar" id="volS" style="height:50%;background:#ff6b9d;"></div></div>
     </div>
   </div>
 </div>
@@ -107,6 +127,9 @@
     <div class="syl-btn" data-idx="3" onclick="setSyllable(3)">
       <input class="syl-input" type="text" maxlength="6" value="Bum" data-idx="3"><span class="syl-key">B</span>
     </div>
+    <div class="syl-btn" data-idx="4" onclick="setSyllable(4)">
+      <input class="syl-input" type="text" maxlength="6" value="Shh" data-idx="4"><span class="syl-key">S</span>
+    </div>
     <div class="bpm-control" id="bpmControl" style="display:none">
       <button onclick="adjustBpm(-5)">&lt; <span class="syl-key">,</span></button>
       <span>BPM = </span><input class="bpm-input" id="bpmInput" type="text" inputmode="numeric" pattern="[0-9]*" value="100">
@@ -115,9 +138,6 @@
   </div>
   <div class="controls-row">
     <div class="sustain-toggle" id="sustainToggle" onclick="toggleSustain()">Sustain: Off <span class="syl-key">Space</span></div>
-    <div class="rub-indicator" id="rubIndicator" onclick="toggleRub()">
-      <span class="syl-key">9</span> Rub: Off
-    </div>
   </div>
 </div>
 
@@ -151,15 +171,6 @@ let sustainMode = false;
 let sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
 let modifiers = { shift: false, ctrl: false, alt: false, meta: false };
 
-// Rub hands: 4-state toggle
-let rubState = 0;
-const RUB_STATES = [
-  { label: 'Off', parts: [] },
-  { label: 'All', parts: ['soprano', 'alto', 'tenor', 'bass'] },
-  { label: 'T+B', parts: ['tenor', 'bass'] },
-  { label: 'A+S', parts: ['alto', 'soprano'] },
-];
-
 // Syllable system
 let activeSyllable = 0;
 const syllables = [
@@ -167,8 +178,56 @@ const syllables = [
   { text: 'Mmm', pulse: false },
   { text: 'Hoo', pulse: false },
   { text: 'Bum', pulse: true },
+  { text: 'Shh', pulse: false, percussive: true },
 ];
 let pulseBpm = 100;
+let partSyllables = { bass: 0, tenor: 0, alto: 0, soprano: 0 };
+
+// Volume per part (0–100, default 50)
+let partVolumes = { bass: 50, tenor: 50, alto: 50, soprano: 50 };
+
+// Volume hold state
+let volHoldTimeout = null;
+let volHoldInterval = null;
+let volHoldDone = false;
+
+function adjustVolume(delta) {
+  const parts = sustainMode ? getTargetParts() : ['bass', 'tenor', 'alto', 'soprano'];
+  for (const part of parts) {
+    partVolumes[part] = Math.max(0, Math.min(100, partVolumes[part] + delta));
+  }
+  updateVolumeBars();
+  sendVolume();
+}
+
+function updateVolumeBars() {
+  for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
+    document.getElementById('vol' + PART_SUFFIXES[part]).style.height = partVolumes[part] + '%';
+  }
+}
+
+function sendVolume() {
+  const msg = { t: 'vol', bass: partVolumes.bass, tenor: partVolumes.tenor, alto: partVolumes.alto, soprano: partVolumes.soprano };
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+}
+
+function startVolHold(delta) {
+  stopVolHold();
+  volHoldDone = false;
+  adjustVolume(delta > 0 ? 5 : -5);
+  volHoldTimeout = setTimeout(() => {
+    volHoldDone = true;
+    volHoldInterval = setInterval(() => {
+      adjustVolume(delta > 0 ? 2 : -2);
+    }, 80);
+  }, 500);
+}
+
+function stopVolHold() {
+  if (volHoldTimeout) { clearTimeout(volHoldTimeout); volHoldTimeout = null; }
+  if (volHoldInterval) { clearInterval(volHoldInterval); volHoldInterval = null; }
+  volHoldDone = false;
+}
 
 // Track last-sent voice assignments for master display
 let lastVoices = { soprano: -1, alto: -1, tenor: -1, bass: -1 };
@@ -178,51 +237,77 @@ function noteName(midi) {
   return NOTES[midi % 12] + (Math.floor(midi / 12) - 1);
 }
 
-function updateMasterDisplay() {
-  const rubParts = RUB_STATES[rubState].parts;
-  const sylText = syllables[activeSyllable].text;
-  const isPulse = syllables[activeSyllable].pulse;
-  const partMap = { bass: 'B', tenor: 'T', alto: 'A', soprano: 'S' };
+const PART_SUFFIXES = { bass: 'B', tenor: 'T', alto: 'A', soprano: 'S' };
 
-  // Update note names
+function getPartSyllable(part) {
+  return sustainMode ? syllables[partSyllables[part]] : syllables[activeSyllable];
+}
+
+function anyPartPulsing() {
+  if (!sustainMode) return syllables[activeSyllable].pulse;
+  return ['bass', 'tenor', 'alto', 'soprano'].some(p => syllables[partSyllables[p]].pulse);
+}
+
+function updateMasterDisplay() {
+  // Update note names only — pulse timer is independent
   for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
-    const suffix = partMap[part];
     const note = lastVoices[part];
-    document.getElementById('note' + suffix).textContent = note >= 0 ? noteName(note) : '';
+    document.getElementById('note' + PART_SUFFIXES[part]).textContent = note >= 0 ? noteName(note) : '';
+  }
+  // Update non-pulsing parts' syllable text immediately
+  updateMasterSyllables();
+}
+
+function updateMasterSyllables() {
+  for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
+    const syl = getPartSyllable(part);
+    const el = document.getElementById('syl' + PART_SUFFIXES[part]);
+    if (!syl.pulse) {
+      // Non-pulsing: set text and ensure full opacity
+      el.style.transition = 'none';
+      el.style.opacity = '1';
+      el.textContent = syl.text;
+    }
+    // Pulsing parts are handled by startMasterPulse timer
+  }
+}
+
+function startMasterPulse() {
+  if (masterPulseTimer) { clearInterval(masterPulseTimer); masterPulseTimer = null; }
+
+  if (!anyPartPulsing()) {
+    // No parts pulsing — reset all opacity and set text
+    for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
+      const el = document.getElementById('syl' + PART_SUFFIXES[part]);
+      el.style.transition = 'none';
+      el.style.opacity = '1';
+    }
+    updateMasterSyllables();
+    return;
   }
 
-  // Update syllable text (non-pulsing parts get set here; pulsing handled by timer)
-  function setSylText(text) {
+  const intervalMs = 60000 / pulseBpm;
+  const fadeDuration = Math.max(200, intervalMs - 50);
+
+  function doPulseFlash() {
     for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
-      const suffix = partMap[part];
-      const isRubbing = rubParts.includes(part);
-      document.getElementById('syl' + suffix).textContent = isRubbing ? 'Shh' : text;
+      const syl = getPartSyllable(part);
+      const el = document.getElementById('syl' + PART_SUFFIXES[part]);
+      if (syl.pulse) {
+        el.textContent = syl.text;
+        el.style.transition = 'none';
+        el.style.opacity = '1';
+        void el.offsetWidth;
+        el.style.transition = `opacity ${fadeDuration}ms ease-out`;
+        el.style.opacity = '0';
+      }
+      // Non-pulsing parts keep their steady text (set by updateMasterSyllables)
     }
   }
 
-  // Clear old pulse timer
-  if (masterPulseTimer) { clearInterval(masterPulseTimer); masterPulseTimer = null; }
-
-  if (isPulse) {
-    const intervalMs = 60000 / pulseBpm;
-    setSylText(sylText);
-    masterPulseTimer = setInterval(() => {
-      setSylText(sylText);
-      setTimeout(() => {
-        if (syllables[activeSyllable].pulse) {
-          const rp = RUB_STATES[rubState].parts;
-          for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
-            const suffix = partMap[part];
-            if (!rp.includes(part)) {
-              document.getElementById('syl' + suffix).textContent = '';
-            }
-          }
-        }
-      }, 250);
-    }, intervalMs);
-  } else {
-    setSylText(sylText);
-  }
+  updateMasterSyllables(); // set non-pulsing parts' text first
+  doPulseFlash();
+  masterPulseTimer = setInterval(doPulseFlash, intervalMs);
 }
 
 function fitToRange(note, part) {
@@ -405,6 +490,7 @@ function toggleSustain() {
     heldNotes.clear();
     heldKeyboard.clear();
     sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
+    partSyllables = { bass: activeSyllable, tenor: activeSyllable, alto: activeSyllable, soprano: activeSyllable };
     updateSustainDisplay();
   } else {
     sustainedNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 };
@@ -415,6 +501,10 @@ function toggleSustain() {
 
 function updateSustainHighlight() {
   const columns = document.querySelectorAll('.part-column');
+  // Show/hide modifier symbols based on sustain mode
+  document.querySelectorAll('.part-modifier').forEach(el => {
+    el.style.display = sustainMode ? 'block' : 'none';
+  });
   if (!sustainMode) {
     columns.forEach(c => c.style.borderColor = 'transparent');
     return;
@@ -426,66 +516,83 @@ function updateSustainHighlight() {
   });
 }
 
-// --- Rub hands toggle ---
-function toggleRub() {
-  rubState = (rubState + 1) % 4;
-  updateIndicators();
-  if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ t: 'rub', parts: RUB_STATES[rubState].parts }));
-  }
-}
-
 // --- Syllable system ---
 function setSyllable(index) {
   activeSyllable = index;
+  if (sustainMode) {
+    const parts = getTargetParts();
+    for (const part of parts) { partSyllables[part] = index; }
+    // Percussive syllable cancels the note for targeted parts
+    if (syllables[index].percussive) {
+      for (const part of parts) { sustainedNotes[part] = -1; }
+      updateSustainDisplay();
+    }
+  }
   updateIndicators();
   sendSyllable();
 }
 
 function sendSyllable() {
-  const syl = syllables[activeSyllable];
-  const msg = { t: 'syl', text: syl.text };
-  if (syl.pulse) { msg.pulse = true; msg.bpm = pulseBpm; }
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+  if (sustainMode) {
+    // Send per-part syllable data
+    const msg = { t: 'syl', perPart: {} };
+    for (const part of ['bass', 'tenor', 'alto', 'soprano']) {
+      const syl = syllables[partSyllables[part]];
+      const pd = { text: syl.text };
+      if (syl.pulse) { pd.pulse = true; pd.bpm = pulseBpm; }
+      msg.perPart[part] = pd;
+    }
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+  } else {
+    const syl = syllables[activeSyllable];
+    const msg = { t: 'syl', text: syl.text };
+    if (syl.pulse) { msg.pulse = true; msg.bpm = pulseBpm; }
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+  }
 }
 
 function adjustBpm(delta) {
   pulseBpm = Math.max(30, Math.min(300, pulseBpm + delta));
   document.getElementById('bpmInput').value = pulseBpm;
-  updateIndicators();
-  if (syllables[activeSyllable].pulse) sendSyllable();
+  if (anyPartPulsing()) { startMasterPulse(); sendSyllable(); }
+}
+
+// BPM hold-to-fine-adjust state
+let bpmHoldTimeout = null;
+let bpmHoldInterval = null;
+let bpmHoldDone = false; // true if we already did the initial ±5 jump
+
+function startBpmHold(delta) {
+  stopBpmHold();
+  bpmHoldDone = false;
+  // After 1 second, start rapid ±1 adjustments
+  bpmHoldTimeout = setTimeout(() => {
+    bpmHoldDone = true;
+    bpmHoldInterval = setInterval(() => {
+      adjustBpm(delta > 0 ? 1 : -1);
+    }, 80);
+  }, 1000);
+}
+
+function stopBpmHold(doInitial, delta) {
+  if (bpmHoldTimeout) { clearTimeout(bpmHoldTimeout); bpmHoldTimeout = null; }
+  if (bpmHoldInterval) { clearInterval(bpmHoldInterval); bpmHoldInterval = null; }
+  // If released before the hold kicked in, do the normal ±5 jump
+  if (doInitial && !bpmHoldDone) { adjustBpm(delta); }
+  bpmHoldDone = false;
 }
 
 function updateIndicators() {
-  // Rub indicator
-  const rubEl = document.getElementById('rubIndicator');
-  const rs = RUB_STATES[rubState];
-  if (rubState === 0) {
-    rubEl.style.background = '#222';
-    rubEl.style.color = '#888';
-    rubEl.innerHTML = '<span class="syl-key">9</span> Rub: Off';
-  } else {
-    const colors = rs.parts.map(p => PART_COLORS[p]);
-    if (colors.length <= 2) {
-      const stops = colors.map((c, i) => `${c} ${i/colors.length*100}%, ${c} ${(i+1)/colors.length*100}%`).join(',');
-      rubEl.style.background = `linear-gradient(to right, ${stops})`;
-    } else {
-      const stops = colors.map((c, i) => `${c} ${i/colors.length*100}%, ${c} ${(i+1)/colors.length*100}%`).join(',');
-      rubEl.style.background = `linear-gradient(to right, ${stops})`;
-    }
-    rubEl.style.color = '#fff';
-    rubEl.innerHTML = `<span class="syl-key" style="color:rgba(0,0,0,0.4)">9</span> Rub: ${rs.label}`;
-  }
-
   // Syllable buttons
   document.querySelectorAll('.syl-btn').forEach(btn => {
     const idx = parseInt(btn.dataset.idx);
     btn.classList.toggle('active', idx === activeSyllable);
   });
 
-  // BPM control visibility
-  document.getElementById('bpmControl').style.display = syllables[activeSyllable].pulse ? 'flex' : 'none';
+  // BPM control visibility — show if any part is pulsing
+  document.getElementById('bpmControl').style.display = anyPartPulsing() ? 'flex' : 'none';
 
+  startMasterPulse();
   updateMasterDisplay();
 }
 
@@ -494,7 +601,11 @@ document.querySelectorAll('.syl-input').forEach(input => {
   input.addEventListener('input', (e) => {
     const idx = parseInt(e.target.dataset.idx);
     syllables[idx].text = e.target.value || '';
-    if (idx === activeSyllable) sendSyllable();
+    // Resend if this syllable is active for any part
+    if (idx === activeSyllable || (sustainMode && Object.values(partSyllables).includes(idx))) {
+      sendSyllable();
+      updateMasterSyllables();
+    }
   });
   // Don't let clicking the input trigger setSyllable via the parent onclick
   input.addEventListener('click', (e) => e.stopPropagation());
@@ -513,7 +624,7 @@ bpmInputEl.addEventListener('change', (e) => {
   if (!isNaN(val)) {
     pulseBpm = Math.max(30, Math.min(300, val));
     e.target.value = pulseBpm;
-    if (syllables[activeSyllable].pulse) sendSyllable();
+    if (anyPartPulsing()) { startMasterPulse(); sendSyllable(); }
   } else {
     e.target.value = pulseBpm;
   }
@@ -534,6 +645,7 @@ function createRoom() {
     const msg = JSON.parse(e.data);
     if (msg.t === 'created') {
       document.getElementById('roomCode').textContent = msg.code;
+      document.getElementById('singerUrl').textContent = 'Singers go to: ' + msg.ip + ':' + msg.port;
       document.getElementById('setup').style.display = 'none';
       document.getElementById('roomInfo').style.display = '';
       document.getElementById('midiSection').style.display = '';
@@ -542,8 +654,9 @@ function createRoom() {
       initMIDI();
       buildRangeIndicators();
       updateIndicators();
-      // Send initial syllable state
+      // Send initial syllable and volume state
       sendSyllable();
+      sendVolume();
     } else if (msg.t === 'r') {
       singerCounts = msg.singers;
       document.getElementById('countS').textContent = singerCounts.soprano || 0;
@@ -721,10 +834,10 @@ function buildRangeIndicators() {
 // C3 and D3 visible on piano but no keyboard shortcut
 const KEY_TO_MIDI = {
   // C3-D#3
-  'z': 48,                      // C3
-  's': 49,                      // C#3
-  'x': 50,                      // D3
-  'd': 51,                      // D#3
+  '`': 48,                      // C3
+  '1': 49,                      // C#3
+  'd': 50,                      // D3
+  '2': 51,                      // D#3
   // E3-B3
   'q': 52,  '3': 54,           // E3, F#3
   'w': 53,  '4': 56,           // F3, G#3
@@ -744,7 +857,7 @@ const KEY_TO_MIDI = {
 
 // Map physical key codes to KEY_TO_MIDI keys (needed when modifiers alter e.key)
 const CODE_TO_KEY = {
-  'KeyZ': 'z', 'KeyS': 's', 'KeyX': 'x', 'KeyD': 'd',
+  'Backquote': '`', 'Digit1': '1', 'KeyD': 'd', 'Digit2': '2',
   'KeyQ': 'q', 'KeyW': 'w', 'KeyE': 'e', 'KeyR': 'r', 'KeyT': 't',
   'KeyY': 'y', 'KeyU': 'u', 'KeyI': 'i', 'KeyO': 'o', 'KeyP': 'p',
   'BracketLeft': '[', 'BracketRight': ']', 'Backslash': '\\',
@@ -764,15 +877,25 @@ document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
   if (e.repeat) return;
 
+  // Syllable keys — allow with modifiers in sustain mode (use e.code for reliability)
+  if (sustainMode) {
+    const sylCodes = { 'KeyA': 0, 'KeyM': 1, 'KeyH': 2, 'KeyB': 3, 'KeyS': 4 };
+    if (sylCodes[e.code] !== undefined) { e.preventDefault(); setSyllable(sylCodes[e.code]); return; }
+  }
+
+  // Volume keys — work with modifiers (for per-part in sustain mode)
+  if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
+  if (e.code === 'Digit6') { e.preventDefault(); startVolHold(-1); return; }
+
   // Special toggle keys (only when no modifier held)
-  if (!e.shiftKey && !e.ctrlKey && !e.altKey) {
-    if (e.key === '9') { e.preventDefault(); toggleRub(); return; }
+  if (!e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey) {
     if (e.key === 'a') { e.preventDefault(); setSyllable(0); return; }
     if (e.key === 'm') { e.preventDefault(); setSyllable(1); return; }
     if (e.key === 'h') { e.preventDefault(); setSyllable(2); return; }
     if (e.key === 'b') { e.preventDefault(); setSyllable(3); return; }
-    if (e.key === ',') { e.preventDefault(); adjustBpm(-5); return; }
-    if (e.key === '.') { e.preventDefault(); adjustBpm(5); return; }
+    if (e.key === 's') { e.preventDefault(); setSyllable(4); return; }
+    if (e.key === ',') { e.preventDefault(); startBpmHold(-5); return; }
+    if (e.key === '.') { e.preventDefault(); startBpmHold(5); return; }
     if (e.key === ' ') { e.preventDefault(); toggleSustain(); return; }
   }
 
@@ -797,6 +920,10 @@ document.addEventListener('keyup', (e) => {
   modifiers.alt = e.altKey;
   modifiers.meta = e.metaKey;
   if (sustainMode) updateSustainHighlight();
+
+  if (e.code === 'Digit9' || e.code === 'Digit6') { stopVolHold(); return; }
+  if (e.key === ',') { stopBpmHold(true, -5); return; }
+  if (e.key === '.') { stopBpmHold(true, 5); return; }
 
   const key = e.key.toLowerCase();
   const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];

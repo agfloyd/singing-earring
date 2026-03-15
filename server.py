@@ -113,7 +113,7 @@ async def handler(websocket):
                 my_room = rooms[code]
                 my_code = code
                 my_role = "conductor"
-                await websocket.send(json.dumps({"t": "created", "code": code}))
+                await websocket.send(json.dumps({"t": "created", "code": code, "ip": get_local_ip(), "port": PORT}))
 
             elif t == "join":
                 code = (msg.get("code") or "").upper()
@@ -135,7 +135,7 @@ async def handler(websocket):
                 await websocket.send(json.dumps({"t": "joined", "code": code}))
                 broadcast_room_state(room, code)
 
-            elif t in ("n", "rub", "syl") and my_role == "conductor" and my_room:
+            elif t in ("n", "syl", "vol") and my_role == "conductor" and my_room:
                 raw_msg = json.dumps(msg)
                 websockets.broadcast(list(my_room["singers"].keys()), raw_msg)
 
