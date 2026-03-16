@@ -20,7 +20,7 @@
   .part-column:first-child { margin-left: 0; }
   .part-column:last-child { margin-right: 0; }
   .part-column .part-label { font-size: 1.5rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.6; }
-  .part-column .part-modifier { font-size: 1.5rem; opacity: 0.4; margin-top: 2px; display: none; }
+  .part-column .part-modifier { font-size: 1.5rem; opacity: 0.4; margin-top: 2px; }
   .part-column .part-count { font-size: 1.4rem; font-weight: bold; }
   .part-column .part-syllable { font-size: 2rem; font-weight: bold; margin: 8px 0 4px; height: 2.4rem; overflow: hidden; }
   .part-column .part-note { font-size: 2.2rem; font-weight: 600; height: 2.6rem; overflow: hidden; opacity: 0.7; }
@@ -30,11 +30,11 @@
   .midi-status { font-size: 0.85rem; color: #888; margin-top: 6px; }
   .piano-wrapper { position: relative; margin-top: 10px; }
   .piano { display: flex; position: relative; height: 140px; user-select: none; -webkit-user-select: none; touch-action: none; }
-  .key { position: relative; border: 1px solid #333; border-radius: 0 0 6px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 6px; font-size: 0.65rem; color: #888; transition: background 0.05s; }
+  .key { position: relative; border: 1px solid #333; border-radius: 0 0 6px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 6px; font-size: 1.3rem; color: #888; transition: background 0.05s; }
   .key.white { background: #ddd; flex: 1; height: 140px; z-index: 1; }
   .key.black { background: #222; width: 28px; height: 85px; margin-left: -14px; margin-right: -14px; z-index: 2; color: #666; }
   .key > * { pointer-events: none; }
-  .key .keybind { font-size: 0.6rem; color: rgba(0,0,0,0.35); margin-top: 2px; font-weight: bold; }
+  .key .keybind { font-size: 1.2rem; color: rgba(0,0,0,0.35); margin-top: 2px; font-weight: bold; }
   .key.black .keybind { color: rgba(255,255,255,0.3); }
   .range-indicators { position: relative; height: 20px; margin-top: 2px; }
   .range-line { position: absolute; height: 2px; border-radius: 1px; }
@@ -139,6 +139,42 @@
   </div>
   <div class="controls-row">
     <div class="sustain-toggle" id="sustainToggle" onclick="toggleSustain()">Sustain: Off <span class="syl-key">Space</span></div>
+    <div class="sustain-toggle" id="modeToggle" onclick="toggleAutoVoicing()">Manual Voicing <span class="syl-key">F</span></div>
+  </div>
+</div>
+
+<div id="autoVoicingControls" class="section" style="display:none">
+  <h2>Auto Voicing</h2>
+  <div style="display:flex;gap:20px;align-items:flex-start;">
+    <div id="autoControlsLeft" style="flex-shrink:0;">
+      <div class="controls-row" style="gap:16px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;cursor:pointer;">
+          <input type="checkbox" id="rootInBassCheck" checked onchange="rootInBass=this.checked"> Root in Bass
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;">
+          Voices: <input type="number" id="numVoicesInput" min="1" max="12" value="4" style="width:3.5em;background:#0f3460;border:1px solid #e94560;color:#eee;padding:4px 6px;border-radius:6px;font-size:1rem;text-align:center;" onchange="numVoices=Math.max(1,Math.min(12,parseInt(this.value)||4))">
+        </label>
+      </div>
+      <div class="controls-row" style="gap:16px;margin-top:8px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;">
+          Key:
+          <select id="tonicSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="selectedKey.tonic=parseInt(this.value);updateStaffDisplay();updateChordDisplay();updatePianoLabels();">
+            <option value="0">C</option><option value="1">C#/Db</option><option value="2">D</option>
+            <option value="3">D#/Eb</option><option value="4">E</option><option value="5">F</option>
+            <option value="6">F#/Gb</option><option value="7">G</option><option value="8">G#/Ab</option>
+            <option value="9">A</option><option value="10">A#/Bb</option><option value="11">B</option>
+          </select>
+          <select id="modeSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="selectedKey.mode=this.value.toLowerCase();updateStaffDisplay();updateChordDisplay();updatePianoLabels();">
+            <option value="major">Major</option><option value="minor">Minor</option>
+          </select>
+        </label>
+      </div>
+      <div id="chordDisplay" style="font-size:2.5rem;font-weight:bold;color:#fbbf24;margin-top:12px;min-height:3rem;"></div>
+      <div id="degreeHints" style="font-size:0.85rem;color:#666;margin-top:8px;">
+        Press 1–7 for scale degrees. Hold 0=dim, -=minor, ==major.
+      </div>
+    </div>
+    <div id="staffContainer" style="flex:1;min-width:0;"></div>
   </div>
 </div>
 
@@ -189,6 +225,60 @@ let partSyllables = { bass: 0, tenor: 0, alto: 0, soprano: 0 };
 
 // Volume per part (0–100, default 50)
 let partVolumes = { bass: 50, tenor: 50, alto: 50, soprano: 50 };
+
+// Auto-voicing state
+let autoVoicing = false;
+let selectedKey = { tonic: 0, mode: 'major' }; // tonic as pitch class (0=C)
+let numVoices = 4;
+let rootInBass = true;
+let currentChord = null;          // { root: pitchClass, quality: 'major'|'minor'|'dim'|'aug' }
+let chordModifiers = { dim: false, min: false, maj: false };
+let previousVoicing = null;       // snapshot of partNotes for voice leading
+
+// Scale degree definitions
+const SCALE_DEGREES = {
+  major: [
+    { interval: 0, quality: 'major' },   // I
+    { interval: 2, quality: 'minor' },   // ii
+    { interval: 4, quality: 'minor' },   // iii
+    { interval: 5, quality: 'major' },   // IV
+    { interval: 7, quality: 'major' },   // V
+    { interval: 9, quality: 'minor' },   // vi
+    { interval: 11, quality: 'dim' },    // vii°
+  ],
+  minor: [
+    { interval: 0, quality: 'minor' },   // i
+    { interval: 2, quality: 'dim' },     // ii°
+    { interval: 3, quality: 'major' },   // III
+    { interval: 5, quality: 'minor' },   // iv
+    { interval: 7, quality: 'minor' },   // v
+    { interval: 8, quality: 'major' },   // VI
+    { interval: 10, quality: 'major' },  // VII
+  ],
+};
+
+const CHORD_INTERVALS = {
+  major: [0, 4, 7],
+  minor: [0, 3, 7],
+  dim: [0, 3, 6],
+  aug: [0, 4, 8],
+};
+
+const QUALITY_LABELS = { major: '', minor: 'm', dim: '°', aug: '+' };
+
+const SHARP_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FLAT_NAMES = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+
+// Number of sharps (positive) or flats (negative) for each key
+const KEY_SIGNATURES = {
+  major: { 0:0, 1:7, 2:2, 3:-3, 4:4, 5:-1, 6:6, 7:1, 8:-4, 9:3, 10:-2, 11:5 },
+  minor: { 0:-3, 1:4, 2:-1, 3:6, 4:1, 5:-4, 6:3, 7:-2, 8:5, 9:0, 10:-5, 11:2 },
+};
+
+function noteNameInKey(pitchClass) {
+  const sig = KEY_SIGNATURES[selectedKey.mode][selectedKey.tonic];
+  return sig >= 0 ? SHARP_NAMES[pitchClass] : FLAT_NAMES[pitchClass];
+}
 
 // Volume hold state
 let volHoldTimeout = null;
@@ -281,6 +371,13 @@ function buildSingerAssignments() {
 // === Note on/off ===
 
 function noteOn(midi) {
+  if (autoVoicing) {
+    const pitchClass = midi % 12;
+    const quality = getChordQuality(pitchClass);
+    setChord({ root: pitchClass, quality });
+    heldNotes.add(midi);
+    return;
+  }
   heldNotes.add(midi);
   const targetParts = getTargetParts();
   distributeNotes(heldNotes, targetParts);
@@ -295,6 +392,16 @@ function noteOn(midi) {
 
 function noteOff(midi) {
   heldNotes.delete(midi);
+  if (autoVoicing) {
+    if (!sustainMode && heldNotes.size === 0) {
+      for (const part of PARTS) partNotes[part] = -1;
+      currentChord = null;
+      updateDisplay();
+      updateChordDisplay();
+      updateStaffDisplay();
+    }
+    return;
+  }
   if (sustainMode) return; // assignments persist
   const targetParts = getTargetParts();
   distributeNotes(heldNotes, targetParts);
@@ -526,13 +633,392 @@ function toggleSustain() {
   updateTargetHighlight();
 }
 
+// === Auto-voicing system ===
+
+function toggleAutoVoicing() {
+  autoVoicing = !autoVoicing;
+  document.getElementById('autoVoicingControls').style.display = autoVoicing ? '' : 'none';
+  const el = document.getElementById('modeToggle');
+  el.innerHTML = (autoVoicing ? 'Auto Voicing' : 'Manual Voicing') + ' <span class="syl-key">F</span>';
+  el.style.background = autoVoicing ? '#e94560' : '#222';
+  el.style.color = autoVoicing ? '#fff' : '#888';
+  // Update volume key labels
+  document.querySelector('.vol-btn:last-child .vol-key').textContent = autoVoicing ? '8' : '6';
+  // Clear state when switching
+  currentChord = null;
+  previousVoicing = null;
+  for (const part of PARTS) partNotes[part] = -1;
+  heldNotes.clear();
+  heldKeyboard.clear();
+  updateDisplay();
+  updateChordDisplay();
+  updateStaffDisplay();
+  updatePianoLabels();
+}
+
+function getChordQuality(pitchClass) {
+  // If modifier held, override quality
+  if (chordModifiers.dim) return 'dim';
+  if (chordModifiers.min) return 'minor';
+  if (chordModifiers.maj) return 'major';
+  // Otherwise, infer from key: find which scale degree this pitch class is
+  const scale = SCALE_DEGREES[selectedKey.mode];
+  for (const entry of scale) {
+    if ((selectedKey.tonic + entry.interval) % 12 === pitchClass) {
+      return entry.quality;
+    }
+  }
+  return 'major'; // default fallback for chromatic notes
+}
+
+function selectScaleDegree(degree) {
+  const scale = SCALE_DEGREES[selectedKey.mode];
+  const entry = scale[degree - 1];
+  const root = (selectedKey.tonic + entry.interval) % 12;
+  let quality = entry.quality;
+  if (chordModifiers.dim) quality = 'dim';
+  else if (chordModifiers.min) quality = 'minor';
+  else if (chordModifiers.maj) quality = 'major';
+  setChord({ root, quality });
+}
+
+function setChord(chord) {
+  previousVoicing = (currentChord && partNotes.bass >= 0) ? { ...partNotes } : null;
+  currentChord = chord;
+  generateVoicing(chord);
+  updateDisplay();
+  updateChordDisplay();
+  updateStaffDisplay();
+}
+
+function generateVoicing(chord) {
+  const intervals = CHORD_INTERVALS[chord.quality] || CHORD_INTERVALS.major;
+  const chordTones = intervals.map(i => (chord.root + i) % 12);
+
+  // Determine which pitch classes each voice should sing
+  // Build target pitch classes based on numVoices (for 4-part, we assign one per part)
+  const voicePitchClasses = assignPitchClasses(chordTones, chord.root);
+
+  // Generate all valid MIDI notes per part for assigned pitch classes
+  const candidates = {};
+  for (const part of PARTS) {
+    const pc = voicePitchClasses[part];
+    const [lo, hi] = RANGE[part];
+    const validNotes = [];
+    for (let midi = lo; midi <= hi; midi++) {
+      if (midi % 12 === pc) validNotes.push(midi);
+    }
+    candidates[part] = validNotes;
+  }
+
+  // If any part has no valid notes, just set what we can
+  for (const part of PARTS) {
+    if (candidates[part].length === 0) {
+      partNotes[part] = -1;
+    }
+  }
+
+  // Find best voicing by brute-force search with scoring
+  let bestScore = Infinity;
+  let bestVoicing = null;
+
+  for (const bass of candidates.bass) {
+    for (const tenor of candidates.tenor) {
+      if (tenor <= bass) continue; // no voice crossing
+      if (tenor - bass > 19) continue; // max ~octave+fifth between bass-tenor
+      for (const alto of candidates.alto) {
+        if (alto <= tenor) continue;
+        if (alto - tenor > 12) continue; // max octave between tenor-alto
+        for (const soprano of candidates.soprano) {
+          if (soprano <= alto) continue;
+          if (soprano - alto > 12) continue; // max octave between alto-soprano
+
+          const candidate = { bass, tenor, alto, soprano };
+          let score = 0;
+
+          // Movement cost (most important)
+          if (previousVoicing) {
+            for (const part of PARTS) {
+              if (previousVoicing[part] >= 0) {
+                score += Math.abs(candidate[part] - previousVoicing[part]) * 2;
+              }
+            }
+
+            // Parallel 5ths/octaves penalty
+            for (let i = 0; i < PARTS.length - 1; i++) {
+              for (let j = i + 1; j < PARTS.length; j++) {
+                const p1 = PARTS[i], p2 = PARTS[j];
+                const prevInt = Math.abs(previousVoicing[p2] - previousVoicing[p1]) % 12;
+                const newInt = Math.abs(candidate[p2] - candidate[p1]) % 12;
+                const bothMoved = previousVoicing[p1] !== candidate[p1] && previousVoicing[p2] !== candidate[p2];
+                // Same direction motion
+                const dir1 = Math.sign(candidate[p1] - previousVoicing[p1]);
+                const dir2 = Math.sign(candidate[p2] - previousVoicing[p2]);
+                if (bothMoved && dir1 === dir2 && (newInt === 7 || newInt === 0) && prevInt === newInt) {
+                  score += 50; // heavy penalty
+                }
+              }
+            }
+
+            // Common tone bonus
+            for (const part of PARTS) {
+              if (previousVoicing[part] === candidate[part]) score -= 3;
+            }
+          }
+
+          // Spacing: prefer upper voices close together
+          score += (soprano - alto) * 0.3;
+          score += (alto - tenor) * 0.3;
+
+          // Prefer voicings near each part's RANGE_MID
+          for (const part of PARTS) {
+            score += Math.abs(candidate[part] - RANGE_MID[part]) * 0.1;
+          }
+
+          if (score < bestScore) {
+            bestScore = score;
+            bestVoicing = candidate;
+          }
+        }
+      }
+    }
+  }
+
+  if (bestVoicing) {
+    for (const part of PARTS) partNotes[part] = bestVoicing[part];
+  }
+}
+
+function assignPitchClasses(chordTones, root) {
+  // For 4 voices with a triad (3 chord tones): double the root
+  // rootInBass: bass always gets root
+  const result = {};
+  const available = [...chordTones];
+
+  if (rootInBass) {
+    result.bass = root;
+    // Distribute remaining tones to tenor, alto, soprano
+    // With 3 chord tones and 3 remaining voices: one gets doubled root
+    const remaining = ['tenor', 'alto', 'soprano'];
+    const tones = [...chordTones];
+    // Double root: add extra root
+    if (tones.length < remaining.length) {
+      // Need to double. Double root first, then 5th
+      while (tones.length < remaining.length) {
+        if (tones.length === chordTones.length) tones.push(root); // double root
+        else if (chordTones.length >= 3) tones.push(chordTones[2]); // double 5th
+        else tones.push(root);
+      }
+    }
+    // Sort tones low to high by RANGE_MID for assignment
+    const sortedTones = tones.sort((a, b) => a - b);
+    const sortedParts = [...remaining].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
+    for (let i = 0; i < sortedParts.length; i++) {
+      result[sortedParts[i]] = sortedTones[i % sortedTones.length];
+    }
+  } else {
+    // No root-in-bass constraint: distribute chord tones evenly
+    const tones = [...chordTones];
+    while (tones.length < 4) {
+      if (tones.length === chordTones.length) tones.push(root);
+      else if (chordTones.length >= 3) tones.push(chordTones[2]);
+      else tones.push(root);
+    }
+    const sortedTones = tones.sort((a, b) => a - b);
+    const sortedParts = [...PARTS].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
+    for (let i = 0; i < sortedParts.length; i++) {
+      result[sortedParts[i]] = sortedTones[i % sortedTones.length];
+    }
+  }
+
+  return result;
+}
+
+function updateChordDisplay() {
+  const el = document.getElementById('chordDisplay');
+  if (!el) return;
+  if (!currentChord) {
+    el.textContent = '';
+    return;
+  }
+  const rootName = NOTES[currentChord.root];
+  const qualLabel = QUALITY_LABELS[currentChord.quality] || '';
+  el.textContent = rootName + qualLabel;
+}
+
+function updateStaffDisplay() {
+  const container = document.getElementById('staffContainer');
+  if (!container) return;
+  if (!autoVoicing) { container.innerHTML = ''; return; }
+
+  // SVG viewBox dimensions
+  const vw = 700, vh = 160;
+  const staffTop = 35, lineGap = 12;
+  const bottomLine = staffTop + 4 * lineGap;
+
+  let svg = `<svg width="100%" viewBox="0 0 ${vw} ${vh}" style="display:block;" preserveAspectRatio="xMinYMid meet">`;
+
+  // 5 staff lines
+  for (let i = 0; i < 5; i++) {
+    const y = staffTop + i * lineGap;
+    svg += `<line x1="10" y1="${y}" x2="${vw-10}" y2="${y}" stroke="#555" stroke-width="1"/>`;
+  }
+
+  // Treble clef (G-clef) — SVG path approximation positioned at the left
+  const clefX = 30, clefY = staffTop + 2 * lineGap; // centered on B4 line
+  svg += `<text x="${clefX}" y="${clefY + 18}" font-size="58" fill="#999" text-anchor="middle" font-family="serif">𝄞</text>`;
+
+  // Key signature
+  const sig = KEY_SIGNATURES[selectedKey.mode][selectedKey.tonic];
+  let keySigEndX = 55; // start drawing key sig after clef
+
+  if (sig > 0) {
+    // Sharps — order: F, C, G, D, A, E, B
+    // Staff positions (steps from top line F5=0): F5=0, C5=3.5→use C5=3, G5=-0.5→above, D5=2, A4=5, E5=1, B4=4
+    // Using half-steps from F5 (top line) where each step = lineGap/2
+    const sharpSteps = [0, 3, -1, 2, 5, 1, 4]; // F5, C5, G5(above), D5, A4, E5, B4
+    for (let i = 0; i < sig; i++) {
+      const sx = keySigEndX + i * 14;
+      const sy = staffTop + sharpSteps[i] * (lineGap / 2);
+      svg += `<text x="${sx}" y="${sy + 5}" font-size="16" fill="#ccc" text-anchor="middle" font-family="serif">♯</text>`;
+      keySigEndX = sx + 14;
+    }
+  } else if (sig < 0) {
+    // Flats — order: B, E, A, D, G, C, F
+    const flatSteps = [4, 1, 5, 2, 6, 3, 7]; // B4, E5, A4, D5, G4, C5, F4
+    for (let i = 0; i < -sig; i++) {
+      const fx = keySigEndX + i * 14;
+      const fy = staffTop + flatSteps[i] * (lineGap / 2);
+      svg += `<text x="${fx}" y="${fy + 5}" font-size="16" fill="#ccc" text-anchor="middle" font-family="serif">♭</text>`;
+      keySigEndX = fx + 14;
+    }
+  }
+
+  // Compute 7 scale degree notes
+  const scale = SCALE_DEGREES[selectedKey.mode];
+  const startOctave = (selectedKey.tonic <= 5) ? 4 : 4; // start in octave 4
+  const startMidi = selectedKey.tonic + (startOctave * 12) + 12; // MIDI = pitchClass + (octave+1)*12
+  // Actually: MIDI 60 = C4, so tonic in octave 4 = tonic + 60 for C, generally: 48 + 12 + tonic for octave 4
+  // MIDI for C4 = 60. So for tonic T in octave 4: midi = 60 + T (if T is offset from C)
+  // Wait — tonic is pitch class 0=C, 2=D, etc. So tonic T in octave 4 = 60 + T? No.
+  // MIDI 60=C4, 62=D4, 64=E4. So pitchClass P in octave 4 = 60 + P? No, that's wrong for sharps.
+  // MIDI note = (octave + 1) * 12 + pitchClass. So octave 4, pitchClass P → (4+1)*12 + P = 60 + P.
+  // C4 = 60+0 = 60 ✓, D4 = 60+2 = 62 ✓, E4 = 60+4 = 64 ✓
+
+  const degreeNotes = [];
+  let baseMidi = 60 + selectedKey.tonic; // tonic in octave 4
+  // If the 7th degree would be too high (above ~F5=77), shift down an octave
+  const seventhInterval = scale[6].interval;
+  if (baseMidi + seventhInterval > 79) baseMidi -= 12;
+  // If tonic is too low for the staff (below C4=60 ledger line area), shift up
+  if (baseMidi < 55) baseMidi += 12;
+
+  for (let d = 0; d < 7; d++) {
+    const midi = baseMidi + scale[d].interval;
+    const pc = (selectedKey.tonic + scale[d].interval) % 12;
+    degreeNotes.push({ midi, pc, quality: scale[d].quality, degree: d + 1 });
+  }
+
+  // Draw noteheads evenly spaced after key signature
+  const noteStartX = keySigEndX + 20;
+  const noteEndX = vw - 30;
+  const noteSpacing = (noteEndX - noteStartX) / 6; // 7 notes, 6 gaps
+
+  for (let d = 0; d < 7; d++) {
+    const nx = noteStartX + d * noteSpacing;
+    const ny = midiToStaffY(degreeNotes[d].midi, staffTop, lineGap);
+
+    // Ledger lines if needed
+    if (ny > bottomLine + lineGap / 2) {
+      for (let ly = bottomLine + lineGap; ly <= ny + 1; ly += lineGap) {
+        svg += `<line x1="${nx-10}" y1="${ly}" x2="${nx+10}" y2="${ly}" stroke="#555" stroke-width="1"/>`;
+      }
+    }
+    if (ny < staffTop - lineGap / 2) {
+      for (let ly = staffTop - lineGap; ly >= ny - 1; ly -= lineGap) {
+        svg += `<line x1="${nx-10}" y1="${ly}" x2="${nx+10}" y2="${ly}" stroke="#555" stroke-width="1"/>`;
+      }
+    }
+
+    // Notehead ellipse — neutral color (not color-coded)
+    const isActive = currentChord && degreeNotes[d].pc === currentChord.root;
+    const fill = isActive ? '#fbbf24' : '#aaa';
+    svg += `<ellipse cx="${nx}" cy="${ny}" rx="7" ry="5" fill="${fill}" transform="rotate(-10,${nx},${ny})"/>`;
+
+    // Digit label below staff
+    const digitY = bottomLine + lineGap * 3.5;
+    svg += `<text x="${nx}" y="${digitY}" text-anchor="middle" fill="#ccc" font-size="15" font-weight="bold">${d + 1}</text>`;
+
+    // Chord symbol below digit
+    const chordName = noteNameInKey(degreeNotes[d].pc) + QUALITY_LABELS[degreeNotes[d].quality];
+    const chordY = digitY + 16;
+    svg += `<text x="${nx}" y="${chordY}" text-anchor="middle" fill="#888" font-size="12">${chordName}</text>`;
+  }
+
+  svg += '</svg>';
+  container.innerHTML = svg;
+}
+
+function midiToStaffY(midi, staffTop, lineGap) {
+  // Map MIDI note to Y position on treble clef staff
+  // F5 (77) = top line = staffTop
+  // E4 (64) = bottom line = staffTop + 4*lineGap
+  // Each staff position is lineGap/2 apart
+  // Use note positions (C,D,E,F,G,A,B) ignoring sharps/flats for Y
+  const notePositions = { 0: 0, 2: 1, 4: 2, 5: 3, 7: 4, 9: 5, 11: 6 }; // C=0..B=6
+  const semitone = midi % 12;
+  const octave = Math.floor(midi / 12) - 1;
+  // Find nearest natural note position
+  let notePos = notePositions[semitone];
+  if (notePos === undefined) {
+    // Sharp/flat: use the lower natural
+    notePos = notePositions[semitone - 1];
+    if (notePos === undefined) notePos = notePositions[semitone + 1];
+  }
+  // F5 (MIDI 77) = staffTop, position = octave5*7 + 3(F) = 38
+  const refPos = 5 * 7 + 3; // F5 absolute position
+  const absPos = octave * 7 + notePos;
+  const stepsFromTop = refPos - absPos;
+  return staffTop + stepsFromTop * (lineGap / 2);
+}
+
+// === Piano label updates ===
+
+function updatePianoLabels() {
+  const keys = document.querySelectorAll('.key');
+  if (autoVoicing) {
+    // Build pitch class → degree number map
+    const scale = SCALE_DEGREES[selectedKey.mode];
+    const pcToDegree = {};
+    for (let d = 0; d < 7; d++) {
+      const pc = (selectedKey.tonic + scale[d].interval) % 12;
+      pcToDegree[pc] = d + 1;
+    }
+    keys.forEach(k => {
+      const midi = parseInt(k.dataset.midi);
+      const pc = midi % 12;
+      const bindEl = k.querySelector('.keybind');
+      if (bindEl) {
+        bindEl.textContent = pcToDegree[pc] !== undefined ? pcToDegree[pc] : '';
+      }
+    });
+  } else {
+    // Restore original keyboard shortcut labels
+    keys.forEach(k => {
+      const midi = parseInt(k.dataset.midi);
+      const bindKey = Object.entries(KEY_TO_MIDI).find(([key, m]) => m === midi);
+      const bindEl = k.querySelector('.keybind');
+      if (bindEl) {
+        bindEl.textContent = bindKey ? (bindKey[0] === '\\' ? '\\' : bindKey[0].toUpperCase()) : '';
+      }
+    });
+  }
+}
+
 // === ZXCV target highlighting ===
 
 function updateTargetHighlight() {
   const anyModifier = modifiers.z || modifiers.x || modifiers.c || modifiers.v;
-  document.querySelectorAll('.part-modifier').forEach(el => {
-    el.style.display = anyModifier ? 'block' : 'none';
-  });
   const targetParts = getTargetParts();
   document.querySelectorAll('.part-column').forEach(c => {
     const part = c.dataset.part;
@@ -700,12 +1186,10 @@ function buildPiano() {
     key.appendChild(nameLabel);
 
     const bindKey = Object.entries(KEY_TO_MIDI).find(([k, m]) => m === midi);
-    if (bindKey) {
-      const bindEl = document.createElement('span');
-      bindEl.className = 'keybind';
-      bindEl.textContent = bindKey[0] === '\\' ? '\\' : bindKey[0].toUpperCase();
-      key.appendChild(bindEl);
-    }
+    const bindEl = document.createElement('span');
+    bindEl.className = 'keybind';
+    bindEl.textContent = bindKey ? (bindKey[0] === '\\' ? '\\' : bindKey[0].toUpperCase()) : '';
+    key.appendChild(bindEl);
 
     key.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -805,7 +1289,11 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'KeyV') { modifiers.v = true; updateTargetHighlight(); return; }
 
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
-  if (e.repeat) return;
+
+  // Mode toggle — never on repeat
+  if (e.code === 'KeyF' && !e.repeat) { e.preventDefault(); toggleAutoVoicing(); return; }
+
+  if (e.repeat && !autoVoicing) return;
 
   // Syllable keys
   if (e.key === 'a') { e.preventDefault(); setSyllable(0); return; }
@@ -814,20 +1302,39 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'b') { e.preventDefault(); setSyllable(3); return; }
   if (e.key === 's') { e.preventDefault(); setSyllable(4); return; }
 
-  // Volume keys
-  if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
-  if (e.code === 'Digit6') { e.preventDefault(); startVolHold(-1); return; }
-
   // BPM and sustain
   if (e.key === ',') { e.preventDefault(); startBpmHold(-5); return; }
   if (e.key === '.') { e.preventDefault(); startBpmHold(5); return; }
   if (e.key === ' ') { e.preventDefault(); toggleSustain(); return; }
 
-  // Note keys
+  if (autoVoicing) {
+    // Scale degree keys 1-7
+    if (e.code === 'Digit1') { e.preventDefault(); selectScaleDegree(1); return; }
+    if (e.code === 'Digit2') { e.preventDefault(); selectScaleDegree(2); return; }
+    if (e.code === 'Digit3') { e.preventDefault(); selectScaleDegree(3); return; }
+    if (e.code === 'Digit4') { e.preventDefault(); selectScaleDegree(4); return; }
+    if (e.code === 'Digit5') { e.preventDefault(); selectScaleDegree(5); return; }
+    if (e.code === 'Digit6') { e.preventDefault(); selectScaleDegree(6); return; }
+    if (e.code === 'Digit7') { e.preventDefault(); selectScaleDegree(7); return; }
+    // Volume down remapped to 8 in auto mode
+    if (e.code === 'Digit8') { e.preventDefault(); startVolHold(-1); return; }
+    // Volume up stays at 9
+    if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
+    // Chord quality modifiers
+    if (e.code === 'Digit0') { e.preventDefault(); chordModifiers.dim = true; updateChordDisplay(); return; }
+    if (e.code === 'Minus') { e.preventDefault(); chordModifiers.min = true; updateChordDisplay(); return; }
+    if (e.code === 'Equal') { e.preventDefault(); chordModifiers.maj = true; updateChordDisplay(); return; }
+  } else {
+    // Volume keys (manual mode)
+    if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
+    if (e.code === 'Digit6') { e.preventDefault(); startVolHold(-1); return; }
+  }
+
+  // Note keys (piano/MIDI via keyboard)
   const key = e.key.toLowerCase();
   const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];
   if (midi !== undefined) {
-    if (sustainMode) {
+    if (autoVoicing || sustainMode) {
       e.preventDefault();
       noteOn(midi);
     } else if (!heldKeyboard.has(e.code)) {
@@ -845,7 +1352,23 @@ document.addEventListener('keyup', (e) => {
   if (e.code === 'KeyC') { modifiers.c = false; updateTargetHighlight(); return; }
   if (e.code === 'KeyV') { modifiers.v = false; updateTargetHighlight(); return; }
 
-  if (e.code === 'Digit9' || e.code === 'Digit6') { stopVolHold(); return; }
+  if (autoVoicing) {
+    if (e.code === 'Digit8' || e.code === 'Digit9') { stopVolHold(); return; }
+    if (e.code === 'Digit0') { chordModifiers.dim = false; updateChordDisplay(); return; }
+    if (e.code === 'Minus') { chordModifiers.min = false; updateChordDisplay(); return; }
+    if (e.code === 'Equal') { chordModifiers.maj = false; updateChordDisplay(); return; }
+    // Scale degree releases: in non-sustain mode, silence
+    if (!sustainMode && /^Digit[1-7]$/.test(e.code)) {
+      for (const part of PARTS) partNotes[part] = -1;
+      currentChord = null;
+      updateDisplay();
+      updateChordDisplay();
+      updateStaffDisplay();
+      return;
+    }
+  } else {
+    if (e.code === 'Digit9' || e.code === 'Digit6') { stopVolHold(); return; }
+  }
   if (e.key === ',') { stopBpmHold(true, -5); return; }
   if (e.key === '.') { stopBpmHold(true, 5); return; }
 
