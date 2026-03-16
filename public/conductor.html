@@ -31,6 +31,7 @@
   .piano-wrapper { position: relative; margin-top: 10px; }
   .piano { display: flex; position: relative; height: 140px; user-select: none; -webkit-user-select: none; touch-action: none; }
   .key { position: relative; border: 1px solid #333; border-radius: 0 0 6px 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 6px; font-size: 1.3rem; color: #888; transition: background 0.05s; }
+  .key .notename { position: absolute; bottom: 26px; pointer-events: none; }
   .key.white { background: #ddd; flex: 1; height: 140px; z-index: 1; }
   .key.black { background: #222; width: 28px; height: 85px; margin-left: -14px; margin-right: -14px; z-index: 2; color: #666; }
   .key > * { pointer-events: none; }
@@ -139,7 +140,7 @@
   </div>
   <div class="controls-row">
     <div class="sustain-toggle" id="sustainToggle" onclick="toggleSustain()">Sustain: Off <span class="syl-key">Space</span></div>
-    <div class="sustain-toggle" id="modeToggle" onclick="toggleAutoVoicing()">Manual Voicing <span class="syl-key">F</span></div>
+    <div class="sustain-toggle" id="modeToggle" onclick="toggleAutoVoicing()">Manual Voicing <span class="syl-key">⌫</span></div>
   </div>
 </div>
 
@@ -158,14 +159,23 @@
       <div class="controls-row" style="gap:16px;margin-top:8px;">
         <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;">
           Key:
-          <select id="tonicSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="selectedKey.tonic=parseInt(this.value);updateStaffDisplay();updateChordDisplay();updatePianoLabels();">
-            <option value="0">C</option><option value="1">C#/Db</option><option value="2">D</option>
-            <option value="3">D#/Eb</option><option value="4">E</option><option value="5">F</option>
-            <option value="6">F#/Gb</option><option value="7">G</option><option value="8">G#/Ab</option>
-            <option value="9">A</option><option value="10">A#/Bb</option><option value="11">B</option>
+          <select id="tonicLetterSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="updateTonicFromUI();">
+            <option value="0">C</option><option value="2">D</option><option value="4">E</option>
+            <option value="5">F</option><option value="7">G</option><option value="9">A</option>
+            <option value="11">B</option>
           </select>
-          <select id="modeSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="selectedKey.mode=this.value.toLowerCase();updateStaffDisplay();updateChordDisplay();updatePianoLabels();">
-            <option value="major">Major</option><option value="minor">Minor</option>
+          <span style="display:inline-flex;flex-direction:column;gap:1px;vertical-align:middle;">
+            <button id="sharpBtn" type="button" onclick="toggleAccidental('sharp')" style="width:24px;height:18px;font-size:13px;line-height:1;padding:0;border:1px solid #555;border-radius:3px 3px 0 0;background:#1a1a2e;color:#777;cursor:pointer;font-family:serif;">♯</button>
+            <button id="flatBtn" type="button" onclick="toggleAccidental('flat')" style="width:24px;height:18px;font-size:13px;line-height:1;padding:0;border:1px solid #555;border-radius:0 0 3px 3px;background:#1a1a2e;color:#777;cursor:pointer;font-family:serif;">♭</button>
+          </span>
+          <select id="modeSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="selectedKey.mode=this.value;previousVoicing=null;updateStaffDisplay();updateChordDisplay();updatePianoLabels();">
+            <option value="major">Major</option>
+            <option value="minor">Minor</option>
+            <option value="dorian" style="color:#888;">Dorian</option>
+            <option value="phrygian" style="color:#888;">Phrygian</option>
+            <option value="lydian" style="color:#888;">Lydian</option>
+            <option value="mixolydian" style="color:#888;">Mixolydian</option>
+            <option value="locrian" style="color:#888;">Locrian</option>
           </select>
         </label>
       </div>
@@ -234,6 +244,7 @@ let rootInBass = true;
 let currentChord = null;          // { root: pitchClass, quality: 'major'|'minor'|'dim'|'aug' }
 let chordModifiers = { dim: false, min: false, maj: false };
 let previousVoicing = null;       // snapshot of partNotes for voice leading
+let voicingResetTimer = null;     // 5-second inactivity timer to reset previousVoicing
 
 // Scale degree definitions
 const SCALE_DEGREES = {
@@ -255,6 +266,51 @@ const SCALE_DEGREES = {
     { interval: 8, quality: 'major' },   // VI
     { interval: 10, quality: 'major' },  // VII
   ],
+  dorian: [
+    { interval: 0, quality: 'minor' },   // i
+    { interval: 2, quality: 'minor' },   // ii
+    { interval: 3, quality: 'major' },   // III
+    { interval: 5, quality: 'major' },   // IV
+    { interval: 7, quality: 'minor' },   // v (actually dominant in dorian usage but diatonic = minor)
+    { interval: 9, quality: 'dim' },     // vi°
+    { interval: 10, quality: 'major' },  // VII
+  ],
+  phrygian: [
+    { interval: 0, quality: 'minor' },   // i
+    { interval: 1, quality: 'major' },   // II
+    { interval: 3, quality: 'major' },   // III
+    { interval: 5, quality: 'minor' },   // iv
+    { interval: 7, quality: 'dim' },     // v°
+    { interval: 8, quality: 'major' },   // VI
+    { interval: 10, quality: 'minor' },  // vii
+  ],
+  lydian: [
+    { interval: 0, quality: 'major' },   // I
+    { interval: 2, quality: 'major' },   // II
+    { interval: 4, quality: 'minor' },   // iii
+    { interval: 6, quality: 'dim' },     // iv°
+    { interval: 7, quality: 'major' },   // V
+    { interval: 9, quality: 'minor' },   // vi
+    { interval: 11, quality: 'minor' },  // vii
+  ],
+  mixolydian: [
+    { interval: 0, quality: 'major' },   // I
+    { interval: 2, quality: 'minor' },   // ii
+    { interval: 4, quality: 'dim' },     // iii°
+    { interval: 5, quality: 'major' },   // IV
+    { interval: 7, quality: 'minor' },   // v
+    { interval: 9, quality: 'minor' },   // vi
+    { interval: 10, quality: 'major' },  // VII
+  ],
+  locrian: [
+    { interval: 0, quality: 'dim' },     // i°
+    { interval: 1, quality: 'major' },   // II
+    { interval: 3, quality: 'minor' },   // iii
+    { interval: 5, quality: 'minor' },   // iv
+    { interval: 6, quality: 'major' },   // V
+    { interval: 8, quality: 'major' },   // VI
+    { interval: 10, quality: 'minor' },  // vii
+  ],
 };
 
 const CHORD_INTERVALS = {
@@ -266,18 +322,60 @@ const CHORD_INTERVALS = {
 
 const QUALITY_LABELS = { major: '', minor: 'm', dim: '°', aug: '+' };
 
-const SHARP_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const FLAT_NAMES = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
+const SHARP_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+const FLAT_NAMES = ['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
 
-// Number of sharps (positive) or flats (negative) for each key
+// Key signatures: number of sharps (positive) or flats (negative) for each tonic + mode
+// Each mode shares the key signature of its relative major (shifted by mode offset)
+// Mode offsets from major: dorian=-2, phrygian=-4, lydian=-5, mixolydian=-7, locrian=-1
 const KEY_SIGNATURES = {
-  major: { 0:0, 1:7, 2:2, 3:-3, 4:4, 5:-1, 6:6, 7:1, 8:-4, 9:3, 10:-2, 11:5 },
-  minor: { 0:-3, 1:4, 2:-1, 3:6, 4:1, 5:-4, 6:3, 7:-2, 8:5, 9:0, 10:-5, 11:2 },
+  major:      { 0:0, 1:7, 2:2, 3:-3, 4:4, 5:-1, 6:6, 7:1, 8:-4, 9:3, 10:-2, 11:5 },
+  minor:      { 0:-3, 1:4, 2:-1, 3:6, 4:1, 5:-4, 6:3, 7:-2, 8:5, 9:0, 10:-5, 11:2 },
+  dorian:     { 0:-2, 1:5, 2:0, 3:-5, 4:2, 5:-3, 6:4, 7:-1, 8:6, 9:1, 10:-4, 11:3 },
+  phrygian:   { 0:-4, 1:3, 2:-2, 3:5, 4:0, 5:-5, 6:2, 7:-3, 8:4, 9:-1, 10:6, 11:1 },
+  lydian:     { 0:1, 1:-4, 2:3, 3:-2, 4:5, 5:0, 6:7, 7:2, 8:-3, 9:4, 10:-1, 11:6 },
+  mixolydian: { 0:-1, 1:6, 2:1, 3:-4, 4:3, 5:-2, 6:5, 7:0, 8:-5, 9:2, 10:-3, 11:4 },
+  locrian:    { 0:-5, 1:2, 2:-3, 3:4, 4:-1, 5:6, 6:1, 7:-4, 8:3, 9:-2, 10:5, 11:0 },
 };
 
 function noteNameInKey(pitchClass) {
   const sig = KEY_SIGNATURES[selectedKey.mode][selectedKey.tonic];
   return sig >= 0 ? SHARP_NAMES[pitchClass] : FLAT_NAMES[pitchClass];
+}
+
+// Tonic accidental state: null, 'sharp', or 'flat'
+let tonicAccidental = null;
+
+function toggleAccidental(type) {
+  // Toggle: if already selected, deselect; otherwise select
+  tonicAccidental = (tonicAccidental === type) ? null : type;
+  updateAccidentalButtons();
+  updateTonicFromUI();
+}
+
+function updateAccidentalButtons() {
+  const sharpBtn = document.getElementById('sharpBtn');
+  const flatBtn = document.getElementById('flatBtn');
+  if (sharpBtn) {
+    sharpBtn.style.background = tonicAccidental === 'sharp' ? '#e94560' : '#1a1a2e';
+    sharpBtn.style.color = tonicAccidental === 'sharp' ? '#fff' : '#777';
+  }
+  if (flatBtn) {
+    flatBtn.style.background = tonicAccidental === 'flat' ? '#4a90d9' : '#1a1a2e';
+    flatBtn.style.color = tonicAccidental === 'flat' ? '#fff' : '#777';
+  }
+}
+
+function updateTonicFromUI() {
+  const letterVal = parseInt(document.getElementById('tonicLetterSelect').value);
+  let tonic = letterVal;
+  if (tonicAccidental === 'sharp') tonic = (letterVal + 1) % 12;
+  else if (tonicAccidental === 'flat') tonic = (letterVal + 11) % 12;
+  selectedKey.tonic = tonic;
+  previousVoicing = null;
+  updateStaffDisplay();
+  updateChordDisplay();
+  updatePianoLabels();
 }
 
 // Volume hold state
@@ -371,6 +469,10 @@ function buildSingerAssignments() {
 // === Note on/off ===
 
 function noteOn(midi) {
+  // Reset the 5-second voicing inactivity timer
+  if (voicingResetTimer) clearTimeout(voicingResetTimer);
+  voicingResetTimer = setTimeout(() => { previousVoicing = null; }, 5000);
+
   if (autoVoicing) {
     const pitchClass = midi % 12;
     const quality = getChordQuality(pitchClass);
@@ -639,7 +741,7 @@ function toggleAutoVoicing() {
   autoVoicing = !autoVoicing;
   document.getElementById('autoVoicingControls').style.display = autoVoicing ? '' : 'none';
   const el = document.getElementById('modeToggle');
-  el.innerHTML = (autoVoicing ? 'Auto Voicing' : 'Manual Voicing') + ' <span class="syl-key">F</span>';
+  el.innerHTML = (autoVoicing ? 'Auto Voicing' : 'Manual Voicing') + ' <span class="syl-key">⌫</span>';
   el.style.background = autoVoicing ? '#e94560' : '#222';
   el.style.color = autoVoicing ? '#fff' : '#888';
   // Update volume key labels
@@ -841,7 +943,7 @@ function updateChordDisplay() {
     el.textContent = '';
     return;
   }
-  const rootName = NOTES[currentChord.root];
+  const rootName = noteNameInKey(currentChord.root);
   const qualLabel = QUALITY_LABELS[currentChord.quality] || '';
   el.textContent = rootName + qualLabel;
 }
@@ -874,24 +976,24 @@ function updateStaffDisplay() {
 
   if (sig > 0) {
     // Sharps — order: F, C, G, D, A, E, B
-    // Staff positions (steps from top line F5=0): F5=0, C5=3.5→use C5=3, G5=-0.5→above, D5=2, A4=5, E5=1, B4=4
-    // Using half-steps from F5 (top line) where each step = lineGap/2
     const sharpSteps = [0, 3, -1, 2, 5, 1, 4]; // F5, C5, G5(above), D5, A4, E5, B4
+    const sharpGap = 8; // compact like real notation
     for (let i = 0; i < sig; i++) {
-      const sx = keySigEndX + i * 14;
+      const sx = keySigEndX + i * sharpGap;
       const sy = staffTop + sharpSteps[i] * (lineGap / 2);
       svg += `<text x="${sx}" y="${sy + 5}" font-size="16" fill="#ccc" text-anchor="middle" font-family="serif">♯</text>`;
-      keySigEndX = sx + 14;
     }
+    keySigEndX += sig * sharpGap + 4;
   } else if (sig < 0) {
     // Flats — order: B, E, A, D, G, C, F
     const flatSteps = [4, 1, 5, 2, 6, 3, 7]; // B4, E5, A4, D5, G4, C5, F4
+    const flatGap = 8; // compact like real notation
     for (let i = 0; i < -sig; i++) {
-      const fx = keySigEndX + i * 14;
+      const fx = keySigEndX + i * flatGap;
       const fy = staffTop + flatSteps[i] * (lineGap / 2);
       svg += `<text x="${fx}" y="${fy + 5}" font-size="16" fill="#ccc" text-anchor="middle" font-family="serif">♭</text>`;
-      keySigEndX = fx + 14;
     }
+    keySigEndX += (-sig) * flatGap + 4;
   }
 
   // Compute 7 scale degree notes
@@ -949,8 +1051,12 @@ function updateStaffDisplay() {
     const digitY = bottomLine + lineGap * 3.5;
     svg += `<text x="${nx}" y="${digitY}" text-anchor="middle" fill="#ccc" font-size="15" font-weight="bold">${d + 1}</text>`;
 
-    // Chord symbol below digit
-    const chordName = noteNameInKey(degreeNotes[d].pc) + QUALITY_LABELS[degreeNotes[d].quality];
+    // Chord symbol below digit — reflect modifier override if held
+    let displayQuality = degreeNotes[d].quality;
+    if (chordModifiers.dim) displayQuality = 'dim';
+    else if (chordModifiers.min) displayQuality = 'minor';
+    else if (chordModifiers.maj) displayQuality = 'major';
+    const chordName = noteNameInKey(degreeNotes[d].pc) + QUALITY_LABELS[displayQuality];
     const chordY = digitY + 16;
     svg += `<text x="${nx}" y="${chordY}" text-anchor="middle" fill="#888" font-size="12">${chordName}</text>`;
   }
@@ -961,22 +1067,33 @@ function updateStaffDisplay() {
 
 function midiToStaffY(midi, staffTop, lineGap) {
   // Map MIDI note to Y position on treble clef staff
-  // F5 (77) = top line = staffTop
-  // E4 (64) = bottom line = staffTop + 4*lineGap
+  // F5 (MIDI 77) = top line = staffTop
+  // E4 (MIDI 64) = bottom line = staffTop + 4*lineGap
   // Each staff position is lineGap/2 apart
-  // Use note positions (C,D,E,F,G,A,B) ignoring sharps/flats for Y
-  const notePositions = { 0: 0, 2: 1, 4: 2, 5: 3, 7: 4, 9: 5, 11: 6 }; // C=0..B=6
+  //
+  // Enharmonic-aware: use the key signature to decide if accidentals
+  // are sharps (position = lower natural) or flats (position = upper natural)
+  const naturalPositions = { 0: 0, 2: 1, 4: 2, 5: 3, 7: 4, 9: 5, 11: 6 }; // C=0,D=1,E=2,F=3,G=4,A=5,B=6
   const semitone = midi % 12;
   const octave = Math.floor(midi / 12) - 1;
-  // Find nearest natural note position
-  let notePos = notePositions[semitone];
+
+  let notePos = naturalPositions[semitone];
   if (notePos === undefined) {
-    // Sharp/flat: use the lower natural
-    notePos = notePositions[semitone - 1];
-    if (notePos === undefined) notePos = notePositions[semitone + 1];
+    // Accidental — check if key uses flats or sharps
+    const sig = KEY_SIGNATURES[selectedKey.mode][selectedKey.tonic];
+    if (sig < 0) {
+      // Flat key: accidental is a flat, so use the upper natural's position
+      // e.g., Bb → B position, Eb → E position, Ab → A position
+      notePos = naturalPositions[semitone + 1];
+    } else {
+      // Sharp key: accidental is a sharp, so use the lower natural's position
+      // e.g., C# → C position, F# → F position
+      notePos = naturalPositions[semitone - 1];
+    }
   }
-  // F5 (MIDI 77) = staffTop, position = octave5*7 + 3(F) = 38
-  const refPos = 5 * 7 + 3; // F5 absolute position
+
+  // F5 absolute position: octave 5, note F (pos 3) = 5*7 + 3 = 38
+  const refPos = 5 * 7 + 3;
   const absPos = octave * 7 + notePos;
   const stepsFromTop = refPos - absPos;
   return staffTop + stepsFromTop * (lineGap / 2);
@@ -1182,8 +1299,12 @@ function buildPiano() {
     key.className = `key ${isBlack ? 'black' : 'white'}`;
     key.dataset.midi = midi;
 
-    const nameLabel = document.createTextNode(isBlack ? '' : NOTES[semitone] + (Math.floor(midi / 12) - 1));
-    key.appendChild(nameLabel);
+    if (!isBlack) {
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'notename';
+      nameSpan.textContent = NOTES[semitone] + (Math.floor(midi / 12) - 1);
+      key.appendChild(nameSpan);
+    }
 
     const bindKey = Object.entries(KEY_TO_MIDI).find(([k, m]) => m === midi);
     const bindEl = document.createElement('span');
@@ -1291,7 +1412,7 @@ document.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
   // Mode toggle — never on repeat
-  if (e.code === 'KeyF' && !e.repeat) { e.preventDefault(); toggleAutoVoicing(); return; }
+  if ((e.code === 'Delete' || e.code === 'Backspace') && !e.repeat) { e.preventDefault(); toggleAutoVoicing(); return; }
 
   if (e.repeat && !autoVoicing) return;
 
@@ -1321,9 +1442,9 @@ document.addEventListener('keydown', (e) => {
     // Volume up stays at 9
     if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
     // Chord quality modifiers
-    if (e.code === 'Digit0') { e.preventDefault(); chordModifiers.dim = true; updateChordDisplay(); return; }
-    if (e.code === 'Minus') { e.preventDefault(); chordModifiers.min = true; updateChordDisplay(); return; }
-    if (e.code === 'Equal') { e.preventDefault(); chordModifiers.maj = true; updateChordDisplay(); return; }
+    if (e.code === 'Digit0') { e.preventDefault(); chordModifiers.dim = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Minus') { e.preventDefault(); chordModifiers.min = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Equal') { e.preventDefault(); chordModifiers.maj = true; updateChordDisplay(); updateStaffDisplay(); return; }
   } else {
     // Volume keys (manual mode)
     if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
@@ -1354,9 +1475,9 @@ document.addEventListener('keyup', (e) => {
 
   if (autoVoicing) {
     if (e.code === 'Digit8' || e.code === 'Digit9') { stopVolHold(); return; }
-    if (e.code === 'Digit0') { chordModifiers.dim = false; updateChordDisplay(); return; }
-    if (e.code === 'Minus') { chordModifiers.min = false; updateChordDisplay(); return; }
-    if (e.code === 'Equal') { chordModifiers.maj = false; updateChordDisplay(); return; }
+    if (e.code === 'Digit0') { chordModifiers.dim = false; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Minus') { chordModifiers.min = false; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Equal') { chordModifiers.maj = false; updateChordDisplay(); updateStaffDisplay(); return; }
     // Scale degree releases: in non-sustain mode, silence
     if (!sustainMode && /^Digit[1-7]$/.test(e.code)) {
       for (const part of PARTS) partNotes[part] = -1;
