@@ -354,6 +354,8 @@ let sustainMode = false;         // sustain pedal: notes persist after release
 let modifierHeld = new Set(); // held modifier key codes (KeyH, KeyJ, etc.)
 let modifierShift = false;    // Shift held for sub-part I selection
 let modifierCtrl = false;     // Ctrl held for sub-part II selection
+let backspaceHeld = false;    // Backspace held (for tonic shortcut or mode toggle)
+let backspaceUsed = false;    // Whether a tonic key was pressed while backspace held
 
 let numParts = 4;
 let activeParts = [];            // current part config array, rebuilt on numParts change
@@ -1913,8 +1915,26 @@ document.addEventListener('keydown', (e) => {
 
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
-  // Mode toggle — never on repeat
-  if ((e.code === 'Delete' || e.code === 'Backspace') && !e.repeat) { e.preventDefault(); toggleAutoVoicing(); return; }
+  // Backspace/Delete: hold for tonic shortcut, tap for mode toggle
+  if ((e.code === 'Delete' || e.code === 'Backspace') && !e.repeat) {
+    e.preventDefault();
+    backspaceHeld = true;
+    backspaceUsed = false;
+    return;
+  }
+  // While backspace held, letter keys set the tonic
+  if (backspaceHeld) {
+    const TONIC_MAP = { KeyC: 0, KeyD: 2, KeyE: 4, KeyF: 5, KeyG: 7, KeyA: 9, KeyB: 11 };
+    if (TONIC_MAP[e.code] !== undefined) {
+      e.preventDefault();
+      backspaceUsed = true;
+      document.getElementById('tonicLetterSelect').value = TONIC_MAP[e.code];
+      tonicAccidental = null;
+      updateAccidentalButtons();
+      updateTonicFromUI();
+      return;
+    }
+  }
 
   if (e.repeat && !autoVoicing) return;
 
@@ -1964,6 +1984,12 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keyup', (e) => {
+  // Backspace/Delete release: toggle mode only if no tonic key was pressed
+  if ((e.code === 'Delete' || e.code === 'Backspace') && backspaceHeld) {
+    backspaceHeld = false;
+    if (!backspaceUsed) toggleAutoVoicing();
+    return;
+  }
   if (MODIFIER_CODES.includes(e.code)) {
     modifierHeld.delete(e.code);
     if (modifierHeld.size === 0) { modifierShift = false; modifierCtrl = false; }
