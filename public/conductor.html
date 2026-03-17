@@ -1918,12 +1918,12 @@ document.addEventListener('keydown', (e) => {
 
   if (e.repeat && !autoVoicing) return;
 
-  // Syllable keys
-  if (e.key === 'a') { e.preventDefault(); setSyllable(0); return; }
-  if (e.key === 'm') { e.preventDefault(); setSyllable(1); return; }
-  if (e.key === 'g') { e.preventDefault(); setSyllable(2); return; }
-  if (e.key === 'b') { e.preventDefault(); setSyllable(3); return; }
-  if (e.key === 's') { e.preventDefault(); setSyllable(4); return; }
+  // Syllable keys (use e.code to avoid dead-key composition with ' modifier)
+  if (e.code === 'KeyA') { e.preventDefault(); setSyllable(0); return; }
+  if (e.code === 'KeyM') { e.preventDefault(); setSyllable(1); return; }
+  if (e.code === 'KeyG') { e.preventDefault(); setSyllable(2); return; }
+  if (e.code === 'KeyB') { e.preventDefault(); setSyllable(3); return; }
+  if (e.code === 'KeyS') { e.preventDefault(); setSyllable(4); return; }
 
   // BPM and sustain
   if (e.key === ',') { e.preventDefault(); startBpmHold(-5); return; }
