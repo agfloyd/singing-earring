@@ -106,7 +106,7 @@
       <input class="syl-input" type="text" maxlength="6" value="Mmm" data-idx="1"><span class="syl-key">M</span>
     </div>
     <div class="syl-btn" data-idx="2" onclick="setSyllable(2)">
-      <input class="syl-input" type="text" maxlength="6" value="Hoo" data-idx="2"><span class="syl-key">H</span>
+      <input class="syl-input" type="text" maxlength="6" value="Hoo" data-idx="2"><span class="syl-key">G</span>
     </div>
     <div class="syl-btn" data-idx="3" onclick="setSyllable(3)">
       <input class="syl-input" type="text" maxlength="6" value="Bum" data-idx="3"><span class="syl-key">B</span>
@@ -187,7 +187,8 @@
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 
 // Modifier keys map to part indices (0-based from lowest)
-const MODIFIER_KEYS = ['z', 'x', 'c', 'v'];
+const MODIFIER_KEYS = ['h', 'j', 'k', 'l', ';', "'"];
+const MODIFIER_CODES = ['KeyH', 'KeyJ', 'KeyK', 'KeyL', 'Semicolon', 'Quote'];
 
 // === Dynamic Part System ===
 
@@ -312,6 +313,37 @@ function computePartColors(parts) {
   }
 }
 
+function getModifierGroups() {
+  // Group activeParts into modifier groups (max 6, one per key H-J-K-L-;-')
+  // Parts with I/II splits (e.g. bass2/bass1) are grouped together
+  if (numParts <= 1) return [];
+  const groups = [];
+  let i = 0;
+  while (i < activeParts.length) {
+    const part = activeParts[i];
+    const baseId = part.id.replace(/[12]$/, '');
+    if (i + 1 < activeParts.length && activeParts[i + 1].id.replace(/[12]$/, '') === baseId) {
+      // Pair: part[i] is II (lower), part[i+1] is I (higher)
+      groups.push({
+        partIds: [part.id, activeParts[i + 1].id],
+        hasSplit: true,
+        label: baseId.charAt(0).toUpperCase() + baseId.slice(1)
+      });
+      i += 2;
+    } else {
+      groups.push({ partIds: [part.id], hasSplit: false, label: part.label });
+      i += 1;
+    }
+  }
+  // Assign keys
+  for (let g = 0; g < groups.length && g < MODIFIER_KEYS.length; g++) {
+    groups[g].key = MODIFIER_KEYS[g];
+    groups[g].keyCode = MODIFIER_CODES[g];
+    groups[g].keyLabel = MODIFIER_KEYS[g] === ';' ? ';' : MODIFIER_KEYS[g] === "'" ? "'" : MODIFIER_KEYS[g].toUpperCase();
+  }
+  return groups;
+}
+
 // === State ===
 let ws = null;
 let midiAccess = null;
@@ -319,7 +351,9 @@ let currentInput = null;
 let heldNotes = new Set();       // physically pressed MIDI notes
 let singers = [];                // [{id, part, range}, ...]
 let sustainMode = false;         // sustain pedal: notes persist after release
-let modifiers = { z: false, x: false, c: false, v: false }; // ZXCV part targeting
+let modifierHeld = new Set(); // held modifier key codes (KeyH, KeyJ, etc.)
+let modifierShift = false;    // Shift held for sub-part I selection
+let modifierCtrl = false;     // Ctrl held for sub-part II selection
 
 let numParts = 4;
 let activeParts = [];            // current part config array, rebuilt on numParts change
@@ -519,14 +553,24 @@ function fitToRange(note, partId, singerRange) {
 }
 
 function getTargetParts() {
-  const anyMod = modifiers.z || modifiers.x || modifiers.c || modifiers.v;
-  if (!anyMod) return getPartIds();
+  if (modifierHeld.size === 0) return getPartIds();
+  const groups = getModifierGroups();
   const parts = [];
-  // ZXCV map to first 4 parts (by index)
-  if (modifiers.z && activeParts.length > 0) parts.push(activeParts[0].id);
-  if (modifiers.x && activeParts.length > 1) parts.push(activeParts[1].id);
-  if (modifiers.c && activeParts.length > 2) parts.push(activeParts[2].id);
-  if (modifiers.v && activeParts.length > 3) parts.push(activeParts[3].id);
+  for (const group of groups) {
+    if (modifierHeld.has(group.keyCode)) {
+      if (group.hasSplit) {
+        if (modifierShift) {
+          parts.push(group.partIds[1]); // Part I (higher)
+        } else if (modifierCtrl) {
+          parts.push(group.partIds[0]); // Part II (lower)
+        } else {
+          parts.push(...group.partIds); // Both
+        }
+      } else {
+        parts.push(...group.partIds);
+      }
+    }
+  }
   return parts.length > 0 ? parts : getPartIds();
 }
 
@@ -680,11 +724,24 @@ function createPartColumn(part) {
   label.textContent = part.label;
   col.appendChild(label);
 
-  // Modifier key hint (only for first 4 parts)
-  const idx = activeParts.indexOf(part);
+  // Modifier key hint
   const modifier = document.createElement('div');
   modifier.className = 'part-modifier';
-  modifier.textContent = idx < 4 ? MODIFIER_KEYS[idx].toUpperCase() : '';
+  const groups = getModifierGroups();
+  let modText = '';
+  for (const group of groups) {
+    if (group.partIds.includes(part.id)) {
+      if (group.hasSplit) {
+        // Show Shift or Ctrl prefix for split parts
+        const isPartI = group.partIds[1] === part.id; // Part I is higher (index 1)
+        modText = (isPartI ? '⇧' : '⌃') + group.keyLabel;
+      } else {
+        modText = group.keyLabel;
+      }
+      break;
+    }
+  }
+  modifier.textContent = modText;
   col.appendChild(modifier);
 
   // Syllable display
@@ -1427,10 +1484,10 @@ function updatePianoLabels() {
   }
 }
 
-// === ZXCV target highlighting ===
+// === Part modifier target highlighting ===
 
 function updateTargetHighlight() {
-  const anyModifier = modifiers.z || modifiers.x || modifiers.c || modifiers.v;
+  const anyModifier = modifierHeld.size > 0;
   const targetParts = getTargetParts();
   document.querySelectorAll('.part-column').forEach(c => {
     const pid = c.dataset.part;
@@ -1487,6 +1544,10 @@ numPartsInputEl.addEventListener('change', (e) => {
 });
 numPartsInputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+});
+numPartsInputEl.addEventListener('input', (e) => {
+  let val = parseInt(e.target.value);
+  if (!isNaN(val) && val > 12) e.target.value = 12;
 });
 
 // === WebSocket ===
@@ -1834,11 +1895,21 @@ const heldKeyboard = new Set();
 // === Keyboard handlers ===
 
 document.addEventListener('keydown', (e) => {
-  // ZXCV modifier keys — always active
-  if (e.code === 'KeyZ') { modifiers.z = true; updateTargetHighlight(); return; }
-  if (e.code === 'KeyX') { modifiers.x = true; updateTargetHighlight(); return; }
-  if (e.code === 'KeyC') { modifiers.c = true; updateTargetHighlight(); return; }
-  if (e.code === 'KeyV') { modifiers.v = true; updateTargetHighlight(); return; }
+  // Part modifier keys (HJKL;') — always active
+  if (MODIFIER_CODES.includes(e.code)) {
+    modifierHeld.add(e.code);
+    modifierShift = e.shiftKey;
+    modifierCtrl = e.ctrlKey || e.metaKey;
+    updateTargetHighlight();
+    return;
+  }
+  // Track Shift/Ctrl changes while modifiers held
+  if ((e.key === 'Shift' || e.key === 'Control' || e.key === 'Meta') && modifierHeld.size > 0) {
+    modifierShift = e.shiftKey;
+    modifierCtrl = e.ctrlKey || e.metaKey;
+    updateTargetHighlight();
+    return;
+  }
 
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
@@ -1850,7 +1921,7 @@ document.addEventListener('keydown', (e) => {
   // Syllable keys
   if (e.key === 'a') { e.preventDefault(); setSyllable(0); return; }
   if (e.key === 'm') { e.preventDefault(); setSyllable(1); return; }
-  if (e.key === 'h') { e.preventDefault(); setSyllable(2); return; }
+  if (e.key === 'g') { e.preventDefault(); setSyllable(2); return; }
   if (e.key === 'b') { e.preventDefault(); setSyllable(3); return; }
   if (e.key === 's') { e.preventDefault(); setSyllable(4); return; }
 
@@ -1893,10 +1964,18 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keyup', (e) => {
-  if (e.code === 'KeyZ') { modifiers.z = false; updateTargetHighlight(); return; }
-  if (e.code === 'KeyX') { modifiers.x = false; updateTargetHighlight(); return; }
-  if (e.code === 'KeyC') { modifiers.c = false; updateTargetHighlight(); return; }
-  if (e.code === 'KeyV') { modifiers.v = false; updateTargetHighlight(); return; }
+  if (MODIFIER_CODES.includes(e.code)) {
+    modifierHeld.delete(e.code);
+    if (modifierHeld.size === 0) { modifierShift = false; modifierCtrl = false; }
+    updateTargetHighlight();
+    return;
+  }
+  if ((e.key === 'Shift' || e.key === 'Control' || e.key === 'Meta') && modifierHeld.size > 0) {
+    modifierShift = e.shiftKey;
+    modifierCtrl = e.ctrlKey || e.metaKey;
+    updateTargetHighlight();
+    return;
+  }
 
   if (autoVoicing) {
     if (e.code === 'Digit8' || e.code === 'Digit9') { stopVolHold(); return; }
