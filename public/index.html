@@ -175,13 +175,14 @@
 
 <script>
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const PART_COLORS = { soprano: '#ff6b9d', alto: '#c084fc', tenor: '#60a5fa', bass: '#34d399' };
-const RANGE = {
+let PART_COLORS = { soprano: '#ff6b9d', alto: '#c084fc', tenor: '#60a5fa', bass: '#34d399' };
+let RANGE = {
   soprano: [60, 79],
   alto:    [53, 72],
   tenor:   [48, 67],
   bass:    [40, 60],
 };
+let dynamicParts = null; // set when conductor sends part config
 
 let selectedPart = null;
 let customRange = { low: null, high: null };
@@ -232,7 +233,7 @@ function selectPart(btn) {
   btn.classList.add('selected');
   selectedPart = btn.dataset.part;
   // Set range as preset for this part
-  const r = RANGE[selectedPart];
+  const r = RANGE[selectedPart] || [48, 72];
   customRange.low = r[0];
   customRange.high = r[1];
   document.getElementById('rangeLow').value = noteName(r[0]);
@@ -646,10 +647,12 @@ document.getElementById('singRangeHigh').addEventListener('keydown', (e) => hand
 function switchPart(part) {
   if (part === selectedPart) return;
   selectedPart = part;
-  // Update range to preset for new part
+  // Update range to preset for new part if available
   const r = RANGE[part];
-  customRange.low = r[0];
-  customRange.high = r[1];
+  if (r) {
+    customRange.low = r[0];
+    customRange.high = r[1];
+  }
   updatePartDisplay();
   buildMiniPiano();
   updateSyllableDisplay();
@@ -660,20 +663,60 @@ function switchPart(part) {
 
 function updatePartDisplay() {
   const label = document.getElementById('partLabel');
-  label.textContent = selectedPart;
-  label.className = `part-label ${selectedPart}`;
+  if (dynamicParts) {
+    const pDef = dynamicParts.find(p => p.id === selectedPart);
+    label.textContent = pDef ? pDef.label : selectedPart;
+    label.style.color = pDef ? pDef.color : '';
+    label.className = 'part-label';
+  } else {
+    label.textContent = selectedPart;
+    label.className = `part-label ${selectedPart}`;
+  }
   document.querySelectorAll('.part-switch-btn').forEach(btn => {
-    const p = btn.textContent === 'S' ? 'soprano' : btn.textContent === 'A' ? 'alto' : btn.textContent === 'T' ? 'tenor' : 'bass';
-    btn.classList.toggle('active', p === selectedPart);
+    btn.classList.toggle('active', btn.dataset.partId === selectedPart);
   });
+}
+
+function rebuildPartButtons(parts) {
+  // Rebuild join-screen part buttons
+  const joinContainer = document.getElementById('parts');
+  joinContainer.innerHTML = '';
+  for (const p of parts) {
+    if (!p.label) continue; // skip unlabeled (1-part mode)
+    const btn = document.createElement('button');
+    btn.className = 'part-btn';
+    btn.dataset.part = p.id;
+    btn.style.background = `${p.color}22`;
+    btn.style.color = p.color;
+    btn.textContent = p.label;
+    btn.onclick = function() { selectPart(this); };
+    if (selectedPart === p.id) btn.classList.add('selected');
+    joinContainer.appendChild(btn);
+  }
+
+  // Rebuild sing-screen part switcher
+  const singContainer = document.getElementById('partSwitcher');
+  singContainer.innerHTML = '';
+  for (const p of parts) {
+    const btn = document.createElement('button');
+    btn.className = 'part-switch-btn';
+    btn.dataset.partId = p.id;
+    btn.style.color = p.color;
+    btn.style.borderColor = p.color;
+    btn.textContent = p.shortLabel || p.label;
+    btn.onclick = function() { switchPart(p.id); };
+    if (selectedPart === p.id) btn.classList.add('active');
+    singContainer.appendChild(btn);
+  }
 }
 
 function buildMiniPiano() {
   const container = document.getElementById('miniPiano');
   container.innerHTML = '';
   if (!selectedPart) return;
-  const lo = customRange.low !== null ? customRange.low : RANGE[selectedPart][0];
-  const hi = customRange.high !== null ? customRange.high : RANGE[selectedPart][1];
+  const defaultRange = RANGE[selectedPart] || [48, 72];
+  const lo = customRange.low !== null ? customRange.low : defaultRange[0];
+  const hi = customRange.high !== null ? customRange.high : defaultRange[1];
   const blackKeys = new Set([1,3,6,8,10]);
   for (let midi = lo; midi <= hi; midi++) {
     const semitone = midi % 12;
@@ -686,9 +729,10 @@ function buildMiniPiano() {
 }
 
 function updateMiniPiano(midi) {
+  const color = PART_COLORS[selectedPart] || '#e94560';
   document.querySelectorAll('.mini-key').forEach(k => {
     const m = parseInt(k.dataset.midi);
-    k.style.background = (m === midi) ? PART_COLORS[selectedPart] : '';
+    k.style.background = (m === midi) ? color : '';
   });
 }
 
@@ -864,9 +908,11 @@ function updateNoteDisplay(midi) {
   if (midi < 0) {
     el.textContent = '---';
     el.className = 'current-note silent';
+    el.style.color = '';
   } else {
     el.textContent = noteName(midi);
-    el.className = `current-note ${selectedPart}`;
+    el.className = 'current-note';
+    el.style.color = PART_COLORS[selectedPart] || '#e94560';
   }
   updateMiniPiano(midi);
 }
@@ -885,9 +931,9 @@ function connectWebSocket(code, isReconnect) {
 
   ws.onopen = () => {
     reconnectAttempts = 0;
-    const part = selectedPart || classifyRange(customRange.low, customRange.high) || 'soprano';
+    const part = selectedPart || classifyRange(customRange.low, customRange.high) || (dynamicParts ? dynamicParts[0].id : 'soprano');
     const range = (customRange.low !== null && customRange.high !== null)
-      ? [customRange.low, customRange.high] : RANGE[part];
+      ? [customRange.low, customRange.high] : (RANGE[part] || [48, 72]);
     ws.send(JSON.stringify({ t: 'join', code, part, range }));
   };
 
@@ -929,11 +975,46 @@ function connectWebSocket(code, isReconnect) {
         updateNoteDisplay(midi);
       }
 
+    } else if (msg.t === 'parts') {
+      // Conductor changed the part configuration
+      dynamicParts = msg.parts;
+      PART_COLORS = {};
+      RANGE = {};
+      for (const p of msg.parts) {
+        PART_COLORS[p.id] = p.color;
+        RANGE[p.id] = p.range;
+      }
+      // Reassign singer to closest new part if current part no longer exists
+      if (!msg.parts.find(p => p.id === selectedPart)) {
+        const mid = (customRange.low !== null && customRange.high !== null)
+          ? (customRange.low + customRange.high) / 2 : 60;
+        let bestPart = msg.parts[0];
+        let bestDist = Infinity;
+        for (const p of msg.parts) {
+          const dist = Math.abs(mid - p.mid);
+          if (dist < bestDist) { bestDist = dist; bestPart = p; }
+        }
+        selectedPart = bestPart.id;
+        if (ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ t: 'part', part: selectedPart, range: [customRange.low, customRange.high] }));
+        }
+      }
+      rebuildPartButtons(msg.parts);
+      updatePartDisplay();
+      buildMiniPiano();
+
     } else if (msg.t === 'r') {
-      const counts = {soprano: 0, alto: 0, tenor: 0, bass: 0};
+      // Room state — count singers per part dynamically
+      const counts = {};
+      if (dynamicParts) {
+        for (const p of dynamicParts) counts[p.id] = 0;
+      } else {
+        counts.soprano = 0; counts.alto = 0; counts.tenor = 0; counts.bass = 0;
+      }
       for (const s of msg.singers) counts[s.part] = (counts[s.part] || 0) + 1;
+      const parts = dynamicParts || [{id:'soprano',shortLabel:'S'},{id:'alto',shortLabel:'A'},{id:'tenor',shortLabel:'T'},{id:'bass',shortLabel:'B'}];
       document.getElementById('singerCounts').textContent =
-        `S:${counts.soprano}  A:${counts.alto}  T:${counts.tenor}  B:${counts.bass}`;
+        parts.map(p => `${p.shortLabel || p.id.charAt(0).toUpperCase()}:${counts[p.id]||0}`).join(' ');
 
     } else if (msg.t === 'ended') {
       intentionalClose = true;

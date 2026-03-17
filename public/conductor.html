@@ -11,7 +11,9 @@
   .room-code { font-size: 3rem; font-weight: bold; letter-spacing: 0.3em; color: #0f3460; background: #e94560; padding: 10px 24px; border-radius: 12px; display: inline-block; margin: 10px 0; }
   .section { background: #16213e; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
   .section h2 { font-size: 1rem; color: #e94560; margin-bottom: 8px; }
-  .master-display { display: flex; gap: 0; margin-top: 12px; overflow: visible; align-items: stretch; }
+  .master-display-container { margin-top: 12px; }
+  .master-display { display: flex; gap: 0; overflow: visible; align-items: stretch; }
+  .master-display-row { display: flex; gap: 0; overflow: visible; align-items: stretch; margin-bottom: 4px; }
   .vol-controls { display: flex; flex-direction: column; justify-content: center; gap: 6px; margin-right: 6px; flex-shrink: 0; }
   .vol-btn { width: 36px; height: 72px; border-radius: 6px; background: #222; border: none; color: #888; font-size: 1.2rem; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; padding: 2px 0; }
   .vol-btn:active { background: #333; }
@@ -19,11 +21,11 @@
   .part-column { position: relative; flex: 1; text-align: center; padding: 12px 8px; margin: 0 3px; border: 3px solid transparent; border-radius: 12px; transition: border-color 0.1s; min-width: 0; box-sizing: border-box; }
   .part-column:first-child { margin-left: 0; }
   .part-column:last-child { margin-right: 0; }
-  .part-column .part-label { font-size: 1.5rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.6; }
-  .part-column .part-modifier { font-size: 1.5rem; opacity: 0.4; margin-top: 2px; }
-  .part-column .part-count { font-size: 1.4rem; font-weight: bold; }
-  .part-column .part-syllable { font-size: 2rem; font-weight: bold; margin: 8px 0 4px; height: 2.4rem; overflow: hidden; }
-  .part-column .part-note { font-size: 2.2rem; font-weight: 600; height: 2.6rem; overflow: hidden; opacity: 0.7; }
+  .part-column .part-label { font-size: 1.3rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .part-column .part-modifier { font-size: 1.3rem; opacity: 0.4; margin-top: 2px; }
+  .part-column .part-count { font-size: 1.2rem; font-weight: bold; }
+  .part-column .part-syllable { font-size: 1.8rem; font-weight: bold; margin: 6px 0 4px; height: 2.2rem; overflow: hidden; }
+  .part-column .part-note { font-size: 1.8rem; font-weight: 600; height: 2.2rem; overflow: hidden; opacity: 0.7; }
   .part-column .vol-bar-wrap { position: absolute; top: 8px; bottom: 8px; right: 6px; width: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
   .part-column .vol-bar { position: absolute; bottom: 0; width: 100%; border-radius: 4px; transition: height 0.1s; }
   .midi-select { background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 8px 12px; border-radius: 8px; font-size: 1rem; width: 100%; }
@@ -37,7 +39,7 @@
   .key > * { pointer-events: none; }
   .key .keybind { font-size: 1.2rem; color: rgba(0,0,0,0.35); margin-top: 2px; font-weight: bold; }
   .key.black .keybind { color: rgba(255,255,255,0.3); }
-  .range-indicators { position: relative; height: 20px; margin-top: 2px; }
+  .range-indicators { position: relative; height: 36px; margin-top: 2px; }
   .range-line { position: absolute; height: 2px; border-radius: 1px; }
   #status { font-size: 0.85rem; color: #888; margin-top: 10px; }
   button { background: #e94560; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; }
@@ -53,6 +55,9 @@
   .bpm-control { display: flex; align-items: center; gap: 8px; font-size: 1.8rem; color: #888; }
   .bpm-control button { padding: 2px 8px; font-size: 1.8rem; border-radius: 6px; }
   .bpm-input { background: transparent; border: none; border-bottom: 1px solid #555; color: #eee; font: inherit; width: 3em; text-align: center; outline: none; }
+  .num-parts-control { display: flex; align-items: center; gap: 6px; font-size: 1rem; color: #ccc; }
+  .num-parts-control input { width: 3.5em; background: #0f3460; border: 1px solid #e94560; color: #eee; padding: 4px 6px; border-radius: 6px; font-size: 1rem; text-align: center; }
+  .num-parts-control button { padding: 2px 8px; font-size: 1.2rem; border-radius: 6px; background: #0f3460; border: 1px solid #e94560; color: #eee; }
 </style>
 </head>
 <body>
@@ -68,43 +73,12 @@
   <div id="singerUrl" style="font-size: 1.3rem; color: #888; margin-bottom: 8px;"></div>
   <h2>Room Code</h2>
   <div class="room-code" id="roomCode"></div>
-  <div class="master-display">
-    <div class="vol-controls">
+  <div class="master-display-container" style="display:flex;align-items:stretch;">
+    <div class="vol-controls" id="volControls" style="display:none">
       <div class="vol-btn" onclick="adjustVolume(5)">▲<span class="vol-key">9</span></div>
-      <div class="vol-btn" onclick="adjustVolume(-5)">▼<span class="vol-key">6</span></div>
+      <div class="vol-btn" onclick="adjustVolume(-5)">▼<span class="vol-key" id="volDownKey">6</span></div>
     </div>
-    <div class="part-column" data-part="bass" style="color: #34d399;">
-      <div class="part-label">Bass</div>
-      <div class="part-modifier">Z</div>
-      <div class="part-count" id="countB">0</div>
-      <div class="part-syllable" id="sylB"></div>
-      <div class="part-note" id="noteB"></div>
-      <div class="vol-bar-wrap"><div class="vol-bar" id="volB" style="height:50%;background:#34d399;"></div></div>
-    </div>
-    <div class="part-column" data-part="tenor" style="color: #60a5fa;">
-      <div class="part-label">Tenor</div>
-      <div class="part-modifier">X</div>
-      <div class="part-count" id="countT">0</div>
-      <div class="part-syllable" id="sylT"></div>
-      <div class="part-note" id="noteT"></div>
-      <div class="vol-bar-wrap"><div class="vol-bar" id="volT" style="height:50%;background:#60a5fa;"></div></div>
-    </div>
-    <div class="part-column" data-part="alto" style="color: #c084fc;">
-      <div class="part-label">Alto</div>
-      <div class="part-modifier">C</div>
-      <div class="part-count" id="countA">0</div>
-      <div class="part-syllable" id="sylA"></div>
-      <div class="part-note" id="noteA"></div>
-      <div class="vol-bar-wrap"><div class="vol-bar" id="volA" style="height:50%;background:#c084fc;"></div></div>
-    </div>
-    <div class="part-column" data-part="soprano" style="color: #ff6b9d;">
-      <div class="part-label">Soprano</div>
-      <div class="part-modifier">V</div>
-      <div class="part-count" id="countS">0</div>
-      <div class="part-syllable" id="sylS"></div>
-      <div class="part-note" id="noteS"></div>
-      <div class="vol-bar-wrap"><div class="vol-bar" id="volS" style="height:50%;background:#ff6b9d;"></div></div>
-    </div>
+    <div id="masterDisplayContainer" style="flex:1;"></div>
   </div>
 </div>
 
@@ -139,6 +113,14 @@
     </div>
   </div>
   <div class="controls-row">
+    <div class="num-parts-control">
+      <span>Number of Parts:</span>
+      <button onclick="setNumParts(numParts - 1)">−</button>
+      <input type="number" id="numPartsInput" min="1" max="12" value="4"
+        oninput="this.value=this.value.replace(/[^0-9]/g,'')"
+        onchange="setNumParts(parseInt(this.value)||4)">
+      <button onclick="setNumParts(numParts + 1)">+</button>
+    </div>
     <div class="sustain-toggle" id="sustainToggle" onclick="toggleSustain()">Sustain: Off <span class="syl-key">Space</span></div>
     <div class="sustain-toggle" id="modeToggle" onclick="toggleAutoVoicing()">Manual Voicing <span class="syl-key">⌫</span></div>
   </div>
@@ -151,9 +133,6 @@
       <div class="controls-row" style="gap:16px;">
         <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;cursor:pointer;">
           <input type="checkbox" id="rootInBassCheck" checked onchange="rootInBass=this.checked"> Root in Bass
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;">
-          Voices: <input type="number" id="numVoicesInput" min="1" max="12" value="4" style="width:3.5em;background:#0f3460;border:1px solid #e94560;color:#eee;padding:4px 6px;border-radius:6px;font-size:1rem;text-align:center;" onchange="numVoices=Math.max(1,Math.min(12,parseInt(this.value)||4))">
         </label>
       </div>
       <div class="controls-row" style="gap:16px;margin-top:8px;">
@@ -198,26 +177,145 @@
 <script>
 // === Constants ===
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const PARTS = ['bass','tenor','alto','soprano'];
-const PART_COLORS = { soprano: '#ff6b9d', alto: '#c084fc', tenor: '#60a5fa', bass: '#34d399' };
-const RANGE_MID = { soprano: 72, alto: 69, tenor: 55, bass: 43 };
-const RANGE = {
-  soprano: [60, 79],
-  alto:    [53, 72],
-  tenor:   [48, 67],
-  bass:    [40, 60],
-};
-const PART_SUFFIXES = { bass: 'B', tenor: 'T', alto: 'A', soprano: 'S' };
+
+// Modifier keys map to part indices (0-based from lowest)
+const MODIFIER_KEYS = ['z', 'x', 'c', 'v'];
+
+// === Dynamic Part System ===
+
+function getPartConfig(n) {
+  // Returns array of part definitions sorted low to high
+  // Each: { id, label, shortLabel }
+  const configs = {
+    1:  [{id:'unison', label:'', shortLabel:''}],
+    2:  [{id:'bass', label:'Bass', shortLabel:'B'},
+         {id:'treble', label:'Treble', shortLabel:'Tr'}],
+    3:  [{id:'tenor', label:'Tenor', shortLabel:'T'},
+         {id:'alto', label:'Alto', shortLabel:'A'},
+         {id:'soprano', label:'Soprano', shortLabel:'S'}],
+    4:  [{id:'bass', label:'Bass', shortLabel:'B'},
+         {id:'tenor', label:'Tenor', shortLabel:'T'},
+         {id:'alto', label:'Alto', shortLabel:'A'},
+         {id:'soprano', label:'Soprano', shortLabel:'S'}],
+    5:  [{id:'bass', label:'Bass', shortLabel:'B'},
+         {id:'baritone', label:'Baritone', shortLabel:'Bar'},
+         {id:'tenor', label:'Tenor', shortLabel:'T'},
+         {id:'alto', label:'Alto', shortLabel:'A'},
+         {id:'soprano', label:'Soprano', shortLabel:'S'}],
+    6:  [{id:'bass', label:'Bass', shortLabel:'B'},
+         {id:'baritone', label:'Baritone', shortLabel:'Bar'},
+         {id:'tenor', label:'Tenor', shortLabel:'T'},
+         {id:'alto', label:'Alto', shortLabel:'A'},
+         {id:'mezzo', label:'Mezzo-Soprano', shortLabel:'Mez'},
+         {id:'soprano', label:'Soprano', shortLabel:'S'}],
+    7:  [{id:'bass', label:'Bass', shortLabel:'B'},
+         {id:'baritone', label:'Baritone', shortLabel:'Bar'},
+         {id:'tenor', label:'Tenor', shortLabel:'T'},
+         {id:'alto2', label:'Alto II', shortLabel:'AII'},
+         {id:'alto1', label:'Alto I', shortLabel:'AI'},
+         {id:'mezzo', label:'Mezzo-Soprano', shortLabel:'Mez'},
+         {id:'soprano', label:'Soprano', shortLabel:'S'}],
+    8:  [{id:'bass2', label:'Bass II', shortLabel:'BII'},
+         {id:'bass1', label:'Bass I', shortLabel:'BI'},
+         {id:'tenor2', label:'Tenor II', shortLabel:'TII'},
+         {id:'tenor1', label:'Tenor I', shortLabel:'TI'},
+         {id:'alto2', label:'Alto II', shortLabel:'AII'},
+         {id:'alto1', label:'Alto I', shortLabel:'AI'},
+         {id:'soprano2', label:'Soprano II', shortLabel:'SII'},
+         {id:'soprano1', label:'Soprano I', shortLabel:'SI'}],
+    9:  [{id:'bass2', label:'Bass II', shortLabel:'BII'},
+         {id:'bass1', label:'Bass I', shortLabel:'BI'},
+         {id:'baritone', label:'Baritone', shortLabel:'Bar'},
+         {id:'tenor2', label:'Tenor II', shortLabel:'TII'},
+         {id:'tenor1', label:'Tenor I', shortLabel:'TI'},
+         {id:'alto2', label:'Alto II', shortLabel:'AII'},
+         {id:'alto1', label:'Alto I', shortLabel:'AI'},
+         {id:'soprano2', label:'Soprano II', shortLabel:'SII'},
+         {id:'soprano1', label:'Soprano I', shortLabel:'SI'}],
+    10: [{id:'bass2', label:'Bass II', shortLabel:'BII'},
+         {id:'bass1', label:'Bass I', shortLabel:'BI'},
+         {id:'baritone2', label:'Baritone II', shortLabel:'BarII'},
+         {id:'baritone1', label:'Baritone I', shortLabel:'BarI'},
+         {id:'tenor2', label:'Tenor II', shortLabel:'TII'},
+         {id:'tenor1', label:'Tenor I', shortLabel:'TI'},
+         {id:'alto2', label:'Alto II', shortLabel:'AII'},
+         {id:'alto1', label:'Alto I', shortLabel:'AI'},
+         {id:'soprano2', label:'Soprano II', shortLabel:'SII'},
+         {id:'soprano1', label:'Soprano I', shortLabel:'SI'}],
+    11: [{id:'bass2', label:'Bass II', shortLabel:'BII'},
+         {id:'bass1', label:'Bass I', shortLabel:'BI'},
+         {id:'baritone2', label:'Baritone II', shortLabel:'BarII'},
+         {id:'baritone1', label:'Baritone I', shortLabel:'BarI'},
+         {id:'tenor2', label:'Tenor II', shortLabel:'TII'},
+         {id:'tenor1', label:'Tenor I', shortLabel:'TI'},
+         {id:'alto2', label:'Alto II', shortLabel:'AII'},
+         {id:'alto1', label:'Alto I', shortLabel:'AI'},
+         {id:'mezzo', label:'Mezzo-Soprano', shortLabel:'Mez'},
+         {id:'soprano2', label:'Soprano II', shortLabel:'SII'},
+         {id:'soprano1', label:'Soprano I', shortLabel:'SI'}],
+    12: [{id:'bass2', label:'Bass II', shortLabel:'BII'},
+         {id:'bass1', label:'Bass I', shortLabel:'BI'},
+         {id:'baritone2', label:'Baritone II', shortLabel:'BarII'},
+         {id:'baritone1', label:'Baritone I', shortLabel:'BarI'},
+         {id:'tenor2', label:'Tenor II', shortLabel:'TII'},
+         {id:'tenor1', label:'Tenor I', shortLabel:'TI'},
+         {id:'alto2', label:'Alto II', shortLabel:'AII'},
+         {id:'alto1', label:'Alto I', shortLabel:'AI'},
+         {id:'mezzo2', label:'Mezzo-Sop. II', shortLabel:'MzII'},
+         {id:'mezzo1', label:'Mezzo-Sop. I', shortLabel:'MzI'},
+         {id:'soprano2', label:'Soprano II', shortLabel:'SII'},
+         {id:'soprano1', label:'Soprano I', shortLabel:'SI'}],
+  };
+  return configs[n] || configs[4];
+}
+
+function computePartRanges(parts) {
+  // Distribute ranges evenly across the vocal range (MIDI 36-84)
+  const lo = 36, hi = 84;
+  const n = parts.length;
+  if (n === 1) {
+    parts[0].range = [40, 79];
+    parts[0].mid = 60;
+    return;
+  }
+  // Each part gets a range centered on an evenly-spaced midpoint
+  // Range width shrinks slightly as parts increase but stays at least 14 semitones
+  const rangeWidth = Math.max(14, Math.round(24 - n));
+  const half = Math.floor(rangeWidth / 2);
+  for (let i = 0; i < n; i++) {
+    const center = Math.round(lo + half + (i / (n - 1)) * (hi - lo - rangeWidth));
+    const partLo = Math.max(lo, center - half);
+    const partHi = Math.min(hi, center + half);
+    parts[i].range = [partLo, partHi];
+    parts[i].mid = center;
+  }
+}
+
+function computePartColors(parts) {
+  const n = parts.length;
+  if (n === 1) {
+    parts[0].color = 'hsl(200, 70%, 60%)';
+    return;
+  }
+  for (let i = 0; i < n; i++) {
+    // Rainbow from red (0°) to violet (280°), low voice to high
+    const hue = Math.round((i / (n - 1)) * 280);
+    parts[i].color = `hsl(${hue}, 70%, 60%)`;
+  }
+}
 
 // === State ===
 let ws = null;
 let midiAccess = null;
 let currentInput = null;
 let heldNotes = new Set();       // physically pressed MIDI notes
-let singers = [];                // [{id, part}, ...]
+let singers = [];                // [{id, part, range}, ...]
 let sustainMode = false;         // sustain pedal: notes persist after release
 let modifiers = { z: false, x: false, c: false, v: false }; // ZXCV part targeting
-let partNotes = { bass: -1, tenor: -1, alto: -1, soprano: -1 }; // current note per part
+
+let numParts = 4;
+let activeParts = [];            // current part config array, rebuilt on numParts change
+let partNotes = {};              // {partId: midiNote} — current note per part
 let lastAssignments = {};        // {singerId: midi} — last sent to singers
 let masterPulseTimer = null;
 
@@ -231,15 +329,14 @@ const syllables = [
   { text: 'Shh', pulse: false, percussive: true },
 ];
 let pulseBpm = 100;
-let partSyllables = { bass: 0, tenor: 0, alto: 0, soprano: 0 };
+let partSyllables = {};          // {partId: syllableIndex}
 
 // Volume per part (0–100, default 50)
-let partVolumes = { bass: 50, tenor: 50, alto: 50, soprano: 50 };
+let partVolumes = {};            // {partId: volume}
 
 // Auto-voicing state
 let autoVoicing = false;
 let selectedKey = { tonic: 0, mode: 'major' }; // tonic as pitch class (0=C)
-let numVoices = 4;
 let rootInBass = true;
 let currentChord = null;          // { root: pitchClass, quality: 'major'|'minor'|'dim'|'aug' }
 let chordModifiers = { dim: false, min: false, maj: false };
@@ -267,49 +364,49 @@ const SCALE_DEGREES = {
     { interval: 10, quality: 'major' },  // VII
   ],
   dorian: [
-    { interval: 0, quality: 'minor' },   // i
-    { interval: 2, quality: 'minor' },   // ii
-    { interval: 3, quality: 'major' },   // III
-    { interval: 5, quality: 'major' },   // IV
-    { interval: 7, quality: 'minor' },   // v (actually dominant in dorian usage but diatonic = minor)
-    { interval: 9, quality: 'dim' },     // vi°
-    { interval: 10, quality: 'major' },  // VII
+    { interval: 0, quality: 'minor' },
+    { interval: 2, quality: 'minor' },
+    { interval: 3, quality: 'major' },
+    { interval: 5, quality: 'major' },
+    { interval: 7, quality: 'minor' },
+    { interval: 9, quality: 'dim' },
+    { interval: 10, quality: 'major' },
   ],
   phrygian: [
-    { interval: 0, quality: 'minor' },   // i
-    { interval: 1, quality: 'major' },   // II
-    { interval: 3, quality: 'major' },   // III
-    { interval: 5, quality: 'minor' },   // iv
-    { interval: 7, quality: 'dim' },     // v°
-    { interval: 8, quality: 'major' },   // VI
-    { interval: 10, quality: 'minor' },  // vii
+    { interval: 0, quality: 'minor' },
+    { interval: 1, quality: 'major' },
+    { interval: 3, quality: 'major' },
+    { interval: 5, quality: 'minor' },
+    { interval: 7, quality: 'dim' },
+    { interval: 8, quality: 'major' },
+    { interval: 10, quality: 'minor' },
   ],
   lydian: [
-    { interval: 0, quality: 'major' },   // I
-    { interval: 2, quality: 'major' },   // II
-    { interval: 4, quality: 'minor' },   // iii
-    { interval: 6, quality: 'dim' },     // iv°
-    { interval: 7, quality: 'major' },   // V
-    { interval: 9, quality: 'minor' },   // vi
-    { interval: 11, quality: 'minor' },  // vii
+    { interval: 0, quality: 'major' },
+    { interval: 2, quality: 'major' },
+    { interval: 4, quality: 'minor' },
+    { interval: 6, quality: 'dim' },
+    { interval: 7, quality: 'major' },
+    { interval: 9, quality: 'minor' },
+    { interval: 11, quality: 'minor' },
   ],
   mixolydian: [
-    { interval: 0, quality: 'major' },   // I
-    { interval: 2, quality: 'minor' },   // ii
-    { interval: 4, quality: 'dim' },     // iii°
-    { interval: 5, quality: 'major' },   // IV
-    { interval: 7, quality: 'minor' },   // v
-    { interval: 9, quality: 'minor' },   // vi
-    { interval: 10, quality: 'major' },  // VII
+    { interval: 0, quality: 'major' },
+    { interval: 2, quality: 'minor' },
+    { interval: 4, quality: 'dim' },
+    { interval: 5, quality: 'major' },
+    { interval: 7, quality: 'minor' },
+    { interval: 9, quality: 'minor' },
+    { interval: 10, quality: 'major' },
   ],
   locrian: [
-    { interval: 0, quality: 'dim' },     // i°
-    { interval: 1, quality: 'major' },   // II
-    { interval: 3, quality: 'minor' },   // iii
-    { interval: 5, quality: 'minor' },   // iv
-    { interval: 6, quality: 'major' },   // V
-    { interval: 8, quality: 'major' },   // VI
-    { interval: 10, quality: 'minor' },  // vii
+    { interval: 0, quality: 'dim' },
+    { interval: 1, quality: 'major' },
+    { interval: 3, quality: 'minor' },
+    { interval: 5, quality: 'minor' },
+    { interval: 6, quality: 'major' },
+    { interval: 8, quality: 'major' },
+    { interval: 10, quality: 'minor' },
   ],
 };
 
@@ -325,9 +422,6 @@ const QUALITY_LABELS = { major: '', minor: 'm', dim: '°', aug: '+' };
 const SHARP_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
 const FLAT_NAMES = ['C','D♭','D','E♭','E','F','G♭','G','A♭','A','B♭','B'];
 
-// Key signatures: number of sharps (positive) or flats (negative) for each tonic + mode
-// Each mode shares the key signature of its relative major (shifted by mode offset)
-// Mode offsets from major: dorian=-2, phrygian=-4, lydian=-5, mixolydian=-7, locrian=-1
 const KEY_SIGNATURES = {
   major:      { 0:0, 1:7, 2:2, 3:-3, 4:4, 5:-1, 6:6, 7:1, 8:-4, 9:3, 10:-2, 11:5 },
   minor:      { 0:-3, 1:4, 2:-1, 3:6, 4:1, 5:-4, 6:3, 7:-2, 8:5, 9:0, 10:-5, 11:2 },
@@ -340,7 +434,6 @@ const KEY_SIGNATURES = {
 
 function getEffectiveSig() {
   let sig = KEY_SIGNATURES[selectedKey.mode][selectedKey.tonic];
-  // If user chose a flat tonic but lookup gives sharps, use enharmonic flats (and vice versa)
   if (tonicAccidental === 'flat' && sig > 0) sig -= 12;
   else if (tonicAccidental === 'sharp' && sig < 0) sig += 12;
   return sig;
@@ -351,11 +444,9 @@ function noteNameInKey(pitchClass) {
   return sig >= 0 ? SHARP_NAMES[pitchClass] : FLAT_NAMES[pitchClass];
 }
 
-// Tonic accidental state: null, 'sharp', or 'flat'
 let tonicAccidental = null;
 
 function toggleAccidental(type) {
-  // Toggle: if already selected, deselect; otherwise select
   tonicAccidental = (tonicAccidental === type) ? null : type;
   updateAccidentalButtons();
   updateTonicFromUI();
@@ -401,8 +492,17 @@ function noteName(midi) {
   return NOTES[midi % 12] + (Math.floor(midi / 12) - 1);
 }
 
-function fitToRange(note, part, singerRange) {
-  const [lo, hi] = singerRange || RANGE[part];
+function getPartById(id) {
+  return activeParts.find(p => p.id === id);
+}
+
+function getPartIds() {
+  return activeParts.map(p => p.id);
+}
+
+function fitToRange(note, partId, singerRange) {
+  const part = getPartById(partId);
+  const [lo, hi] = singerRange || (part ? part.range : [40, 79]);
   while (note < lo) note += 12;
   while (note > hi) note -= 12;
   if (note < lo) note = lo;
@@ -411,38 +511,228 @@ function fitToRange(note, part, singerRange) {
 }
 
 function getTargetParts() {
-  if (!modifiers.z && !modifiers.x && !modifiers.c && !modifiers.v) {
-    return ['bass', 'tenor', 'alto', 'soprano'];
-  }
+  const anyMod = modifiers.z || modifiers.x || modifiers.c || modifiers.v;
+  if (!anyMod) return getPartIds();
   const parts = [];
-  if (modifiers.z) parts.push('bass');
-  if (modifiers.x) parts.push('tenor');
-  if (modifiers.c) parts.push('alto');
-  if (modifiers.v) parts.push('soprano');
-  return parts;
+  // ZXCV map to first 4 parts (by index)
+  if (modifiers.z && activeParts.length > 0) parts.push(activeParts[0].id);
+  if (modifiers.x && activeParts.length > 1) parts.push(activeParts[1].id);
+  if (modifiers.c && activeParts.length > 2) parts.push(activeParts[2].id);
+  if (modifiers.v && activeParts.length > 3) parts.push(activeParts[3].id);
+  return parts.length > 0 ? parts : getPartIds();
 }
 
-function singerCountForPart(part) {
-  return singers.filter(s => s.part === part).length;
+function singerCountForPart(partId) {
+  return singers.filter(s => s.part === partId).length;
+}
+
+// === Initialize parts ===
+
+function initParts(n) {
+  numParts = Math.max(1, Math.min(12, n));
+  const oldParts = activeParts;
+  activeParts = getPartConfig(numParts);
+  computePartRanges(activeParts);
+  computePartColors(activeParts);
+
+  // Rebuild state objects, preserving values where part IDs match
+  const newPartNotes = {};
+  const newPartSyllables = {};
+  const newPartVolumes = {};
+  for (const part of activeParts) {
+    newPartNotes[part.id] = (partNotes[part.id] !== undefined) ? partNotes[part.id] : -1;
+    newPartSyllables[part.id] = (partSyllables[part.id] !== undefined) ? partSyllables[part.id] : activeSyllable;
+    newPartVolumes[part.id] = (partVolumes[part.id] !== undefined) ? partVolumes[part.id] : 50;
+  }
+  partNotes = newPartNotes;
+  partSyllables = newPartSyllables;
+  partVolumes = newPartVolumes;
+
+  // Reset previousVoicing since parts changed
+  previousVoicing = null;
+
+  // Reassign singers to closest new parts
+  if (oldParts.length > 0 && singers.length > 0) {
+    reassignSingers();
+  }
+
+  // Update input
+  const input = document.getElementById('numPartsInput');
+  if (input) input.value = numParts;
+
+  // Rebuild UI
+  buildMasterDisplay();
+  buildRangeIndicators();
+  updateDisplay();
+  sendVolume();
+  sendSyllable();
+
+  // Broadcast new part config to singers
+  sendPartConfig();
+}
+
+function setNumParts(n) {
+  initParts(n);
+}
+
+function reassignSingers() {
+  // Map each singer to the closest new part by range midpoint
+  for (const singer of singers) {
+    if (singer.range) {
+      // Use singer's personal range to find closest part
+      const singerMid = (singer.range[0] + singer.range[1]) / 2;
+      let bestPart = activeParts[0];
+      let bestDist = Infinity;
+      for (const part of activeParts) {
+        const dist = Math.abs(singerMid - part.mid);
+        if (dist < bestDist) { bestDist = dist; bestPart = part; }
+      }
+      singer.part = bestPart.id;
+    } else {
+      // No personal range: map by old part's approximate position
+      // Just assign to closest part by name similarity or default
+      const oldPart = singer.part;
+      let matched = activeParts.find(p => p.id === oldPart);
+      if (!matched) {
+        // Try base name match (e.g. 'soprano' matches 'soprano1', 'soprano2')
+        matched = activeParts.find(p => p.id.startsWith(oldPart) || oldPart.startsWith(p.id));
+      }
+      singer.part = matched ? matched.id : activeParts[Math.floor(activeParts.length / 2)].id;
+    }
+  }
+}
+
+function sendPartConfig() {
+  if (!ws || ws.readyState !== 1) return;
+  const partsData = activeParts.map(p => ({
+    id: p.id, label: p.label, shortLabel: p.shortLabel,
+    color: p.color, range: p.range, mid: p.mid
+  }));
+  ws.send(JSON.stringify({ t: 'parts', parts: partsData }));
+}
+
+// === Build master display dynamically ===
+
+function buildMasterDisplay() {
+  const container = document.getElementById('masterDisplayContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const volControls = document.getElementById('volControls');
+  if (volControls) volControls.style.display = '';
+
+  const n = activeParts.length;
+  const useRows = n > 6;
+
+  if (useRows) {
+    // Split into two rows: bottom half (lower voices) and top half (higher voices)
+    const midIdx = Math.ceil(n / 2);
+    const bottomParts = activeParts.slice(0, midIdx);
+    const topParts = activeParts.slice(midIdx);
+
+    // Top row (higher voices)
+    const topRow = document.createElement('div');
+    topRow.className = 'master-display-row';
+    for (const part of topParts) {
+      topRow.appendChild(createPartColumn(part));
+    }
+    container.appendChild(topRow);
+
+    // Bottom row (lower voices)
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'master-display-row';
+    for (const part of bottomParts) {
+      bottomRow.appendChild(createPartColumn(part));
+    }
+    container.appendChild(bottomRow);
+  } else {
+    // Single row
+    const row = document.createElement('div');
+    row.className = 'master-display';
+    for (const part of activeParts) {
+      row.appendChild(createPartColumn(part));
+    }
+    container.appendChild(row);
+  }
+
+  updateVolumeBars();
+  updateMasterSyllables();
+}
+
+function createPartColumn(part) {
+  const col = document.createElement('div');
+  col.className = 'part-column';
+  col.dataset.part = part.id;
+  col.style.color = part.color;
+
+  // Part label (hidden for 1-part mode)
+  const label = document.createElement('div');
+  label.className = 'part-label';
+  label.textContent = part.label;
+  col.appendChild(label);
+
+  // Modifier key hint (only for first 4 parts)
+  const idx = activeParts.indexOf(part);
+  const modifier = document.createElement('div');
+  modifier.className = 'part-modifier';
+  modifier.textContent = idx < 4 ? MODIFIER_KEYS[idx].toUpperCase() : '';
+  col.appendChild(modifier);
+
+  // Singer count
+  const count = document.createElement('div');
+  count.className = 'part-count';
+  count.textContent = '0';
+  col.appendChild(count);
+
+  // Syllable display
+  const syl = document.createElement('div');
+  syl.className = 'part-syllable';
+  syl.textContent = '';
+  col.appendChild(syl);
+
+  // Note display
+  const note = document.createElement('div');
+  note.className = 'part-note';
+  note.textContent = '';
+  col.appendChild(note);
+
+  // Volume bar
+  const volWrap = document.createElement('div');
+  volWrap.className = 'vol-bar-wrap';
+  const volBar = document.createElement('div');
+  volBar.className = 'vol-bar';
+  volBar.style.height = (partVolumes[part.id] || 50) + '%';
+  volBar.style.background = part.color;
+  volWrap.appendChild(volBar);
+  col.appendChild(volWrap);
+
+  return col;
+}
+
+function getPartEl(partId, className) {
+  const col = document.querySelector(`.part-column[data-part="${partId}"]`);
+  return col ? col.querySelector('.' + className) : null;
 }
 
 // === Core: note distribution ===
 
-// Distribute notes across targeted parts. Non-targeted parts are unchanged.
-function distributeNotes(notes, targetParts) {
+function distributeNotes(notes, targetPartIds) {
   const sorted = [...notes].sort((a, b) => a - b);
 
   if (sorted.length === 0) {
-    for (const part of targetParts) partNotes[part] = -1;
+    for (const pid of targetPartIds) partNotes[pid] = -1;
     return;
   }
 
   // Filter to parts with singers (fall back to all targeted if none have singers)
-  const activeParts = targetParts.filter(p => singerCountForPart(p) > 0);
-  const partsToUse = activeParts.length > 0 ? activeParts : targetParts;
+  const activePids = targetPartIds.filter(pid => singerCountForPart(pid) > 0);
+  const pidsToUse = activePids.length > 0 ? activePids : targetPartIds;
 
   // Sort target parts by range (low to high)
-  const partsByRange = [...partsToUse].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
+  const partsByRange = [...pidsToUse].sort((a, b) => {
+    const pa = getPartById(a), pb = getPartById(b);
+    return (pa ? pa.mid : 0) - (pb ? pb.mid : 0);
+  });
   const n = sorted.length, p = partsByRange.length;
 
   if (n >= p) {
@@ -477,7 +767,6 @@ function buildSingerAssignments() {
 // === Note on/off ===
 
 function noteOn(midi) {
-  // Reset the 5-second voicing inactivity timer
   if (voicingResetTimer) clearTimeout(voicingResetTimer);
   voicingResetTimer = setTimeout(() => { previousVoicing = null; }, 5000);
 
@@ -491,10 +780,9 @@ function noteOn(midi) {
   heldNotes.add(midi);
   const targetParts = getTargetParts();
   distributeNotes(heldNotes, targetParts);
-  // In non-sustain mode, silence non-targeted parts
   if (!sustainMode) {
-    for (const part of PARTS) {
-      if (!targetParts.includes(part)) partNotes[part] = -1;
+    for (const pid of getPartIds()) {
+      if (!targetParts.includes(pid)) partNotes[pid] = -1;
     }
   }
   updateDisplay();
@@ -504,7 +792,7 @@ function noteOff(midi) {
   heldNotes.delete(midi);
   if (autoVoicing) {
     if (!sustainMode && heldNotes.size === 0) {
-      for (const part of PARTS) partNotes[part] = -1;
+      for (const pid of getPartIds()) partNotes[pid] = -1;
       currentChord = null;
       updateDisplay();
       updateChordDisplay();
@@ -512,11 +800,11 @@ function noteOff(midi) {
     }
     return;
   }
-  if (sustainMode) return; // assignments persist
+  if (sustainMode) return;
   const targetParts = getTargetParts();
   distributeNotes(heldNotes, targetParts);
-  for (const part of PARTS) {
-    if (!targetParts.includes(part)) partNotes[part] = -1;
+  for (const pid of getPartIds()) {
+    if (!targetParts.includes(pid)) partNotes[pid] = -1;
   }
   updateDisplay();
 }
@@ -537,18 +825,18 @@ function updateDisplay() {
   document.querySelectorAll('.key').forEach(k => {
     const midi = parseInt(k.dataset.midi);
     const partsOnKey = [];
-    for (const part of PARTS) {
-      if (partNotes[part] === midi) partsOnKey.push(part);
+    for (const part of activeParts) {
+      if (partNotes[part.id] === midi) partsOnKey.push(part);
     }
     if (partsOnKey.length === 0) {
       k.style.background = '';
     } else if (partsOnKey.length === 1) {
-      k.style.background = PART_COLORS[partsOnKey[0]];
+      k.style.background = partsOnKey[0].color;
     } else {
       const stops = partsOnKey.map((p, i) => {
         const pct1 = (i / partsOnKey.length * 100).toFixed(1);
         const pct2 = ((i + 1) / partsOnKey.length * 100).toFixed(1);
-        return `${PART_COLORS[p]} ${pct1}%, ${PART_COLORS[p]} ${pct2}%`;
+        return `${p.color} ${pct1}%, ${p.color} ${pct2}%`;
       }).join(', ');
       k.style.background = `linear-gradient(to right, ${stops})`;
     }
@@ -556,31 +844,30 @@ function updateDisplay() {
 }
 
 function updateMasterDisplay() {
-  for (const part of PARTS) {
-    const note = partNotes[part];
-    const el = document.getElementById('note' + PART_SUFFIXES[part]);
-    el.textContent = note >= 0 ? noteName(note) : '';
+  for (const part of activeParts) {
+    const note = partNotes[part.id];
+    const el = getPartEl(part.id, 'part-note');
+    if (el) el.textContent = note >= 0 ? noteName(note) : '';
   }
   updateMasterSyllables();
 }
 
 // === Syllable system ===
 
-function getPartSyllable(part) {
-  return syllables[partSyllables[part]];
+function getPartSyllable(partId) {
+  return syllables[partSyllables[partId] || 0];
 }
 
 function anyPartPulsing() {
-  return PARTS.some(p => syllables[partSyllables[p]].pulse);
+  return activeParts.some(p => syllables[partSyllables[p.id] || 0].pulse);
 }
 
 function setSyllable(index) {
   activeSyllable = index;
   const parts = getTargetParts();
-  for (const part of parts) partSyllables[part] = index;
-  // Percussive syllable cancels the note for targeted parts
+  for (const pid of parts) partSyllables[pid] = index;
   if (syllables[index].percussive) {
-    for (const part of parts) partNotes[part] = -1;
+    for (const pid of parts) partNotes[pid] = -1;
     updateDisplay();
   }
   updateIndicators();
@@ -589,19 +876,20 @@ function setSyllable(index) {
 
 function sendSyllable() {
   const msg = { t: 'syl', perPart: {} };
-  for (const part of PARTS) {
-    const syl = syllables[partSyllables[part]];
+  for (const part of activeParts) {
+    const syl = syllables[partSyllables[part.id] || 0];
     const pd = { text: syl.text };
     if (syl.pulse) { pd.pulse = true; pd.bpm = pulseBpm; }
-    msg.perPart[part] = pd;
+    msg.perPart[part.id] = pd;
   }
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
 }
 
 function updateMasterSyllables() {
-  for (const part of PARTS) {
-    const syl = getPartSyllable(part);
-    const el = document.getElementById('syl' + PART_SUFFIXES[part]);
+  for (const part of activeParts) {
+    const syl = getPartSyllable(part.id);
+    const el = getPartEl(part.id, 'part-syllable');
+    if (!el) continue;
     if (!syl.pulse) {
       el.style.transition = 'none';
       el.style.opacity = '1';
@@ -614,10 +902,12 @@ function startMasterPulse() {
   if (masterPulseTimer) { clearInterval(masterPulseTimer); masterPulseTimer = null; }
 
   if (!anyPartPulsing()) {
-    for (const part of PARTS) {
-      const el = document.getElementById('syl' + PART_SUFFIXES[part]);
-      el.style.transition = 'none';
-      el.style.opacity = '1';
+    for (const part of activeParts) {
+      const el = getPartEl(part.id, 'part-syllable');
+      if (el) {
+        el.style.transition = 'none';
+        el.style.opacity = '1';
+      }
     }
     updateMasterSyllables();
     return;
@@ -627,9 +917,10 @@ function startMasterPulse() {
   const fadeDuration = Math.max(200, intervalMs - 50);
 
   function doPulseFlash() {
-    for (const part of PARTS) {
-      const syl = getPartSyllable(part);
-      const el = document.getElementById('syl' + PART_SUFFIXES[part]);
+    for (const part of activeParts) {
+      const syl = getPartSyllable(part.id);
+      const el = getPartEl(part.id, 'part-syllable');
+      if (!el) continue;
       if (syl.pulse) {
         el.textContent = syl.text;
         el.style.transition = 'none';
@@ -660,21 +951,25 @@ function updateIndicators() {
 
 function adjustVolume(delta) {
   const parts = getTargetParts();
-  for (const part of parts) {
-    partVolumes[part] = Math.max(0, Math.min(100, partVolumes[part] + delta));
+  for (const pid of parts) {
+    partVolumes[pid] = Math.max(0, Math.min(100, (partVolumes[pid] || 50) + delta));
   }
   updateVolumeBars();
   sendVolume();
 }
 
 function updateVolumeBars() {
-  for (const part of PARTS) {
-    document.getElementById('vol' + PART_SUFFIXES[part]).style.height = partVolumes[part] + '%';
+  for (const part of activeParts) {
+    const el = getPartEl(part.id, 'vol-bar');
+    if (el) el.style.height = (partVolumes[part.id] || 50) + '%';
   }
 }
 
 function sendVolume() {
-  const msg = { t: 'vol', bass: partVolumes.bass, tenor: partVolumes.tenor, alto: partVolumes.alto, soprano: partVolumes.soprano };
+  const msg = { t: 'vol' };
+  for (const part of activeParts) {
+    msg[part.id] = partVolumes[part.id] || 50;
+  }
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
 }
 
@@ -728,17 +1023,15 @@ function toggleSustain() {
   el.style.color = sustainMode ? '#fff' : '#888';
 
   if (!sustainMode) {
-    // Turning off: if no keys held, silence everything
+    const pids = getPartIds();
     if (heldNotes.size === 0) {
-      for (const part of PARTS) partNotes[part] = -1;
+      for (const pid of pids) partNotes[pid] = -1;
       updateDisplay();
     } else {
-      // Keys still held: redistribute to all parts
-      distributeNotes(heldNotes, PARTS);
+      distributeNotes(heldNotes, pids);
       updateDisplay();
     }
   }
-  // Turning on: current assignments persist, no state change needed
 
   updateTargetHighlight();
 }
@@ -753,11 +1046,11 @@ function toggleAutoVoicing() {
   el.style.background = autoVoicing ? '#e94560' : '#222';
   el.style.color = autoVoicing ? '#fff' : '#888';
   // Update volume key labels
-  document.querySelector('.vol-btn:last-child .vol-key').textContent = autoVoicing ? '8' : '6';
+  document.getElementById('volDownKey').textContent = autoVoicing ? '8' : '6';
   // Clear state when switching
   currentChord = null;
   previousVoicing = null;
-  for (const part of PARTS) partNotes[part] = -1;
+  for (const pid of getPartIds()) partNotes[pid] = -1;
   heldNotes.clear();
   heldKeyboard.clear();
   updateDisplay();
@@ -767,18 +1060,16 @@ function toggleAutoVoicing() {
 }
 
 function getChordQuality(pitchClass) {
-  // If modifier held, override quality
   if (chordModifiers.dim) return 'dim';
   if (chordModifiers.min) return 'minor';
   if (chordModifiers.maj) return 'major';
-  // Otherwise, infer from key: find which scale degree this pitch class is
   const scale = SCALE_DEGREES[selectedKey.mode];
   for (const entry of scale) {
     if ((selectedKey.tonic + entry.interval) % 12 === pitchClass) {
       return entry.quality;
     }
   }
-  return 'major'; // default fallback for chromatic notes
+  return 'major';
 }
 
 function selectScaleDegree(degree) {
@@ -793,7 +1084,8 @@ function selectScaleDegree(degree) {
 }
 
 function setChord(chord) {
-  previousVoicing = (currentChord && partNotes.bass >= 0) ? { ...partNotes } : null;
+  previousVoicing = (currentChord && Object.values(partNotes).some(n => n >= 0))
+    ? { ...partNotes } : null;
   currentChord = chord;
   generateVoicing(chord);
   updateDisplay();
@@ -805,139 +1097,163 @@ function generateVoicing(chord) {
   const intervals = CHORD_INTERVALS[chord.quality] || CHORD_INTERVALS.major;
   const chordTones = intervals.map(i => (chord.root + i) % 12);
 
-  // Determine which pitch classes each voice should sing
-  // Build target pitch classes based on numVoices (for 4-part, we assign one per part)
+  // Assign pitch classes to each voice
   const voicePitchClasses = assignPitchClasses(chordTones, chord.root);
 
-  // Generate all valid MIDI notes per part for assigned pitch classes
-  const candidates = {};
-  for (const part of PARTS) {
-    const pc = voicePitchClasses[part];
-    const [lo, hi] = RANGE[part];
+  // Generate all valid MIDI notes per part
+  const candidates = [];
+  for (const part of activeParts) {
+    const pc = voicePitchClasses[part.id];
+    const [lo, hi] = part.range;
     const validNotes = [];
     for (let midi = lo; midi <= hi; midi++) {
       if (midi % 12 === pc) validNotes.push(midi);
     }
-    candidates[part] = validNotes;
+    candidates.push(validNotes);
   }
 
-  // If any part has no valid notes, just set what we can
-  for (const part of PARTS) {
-    if (candidates[part].length === 0) {
-      partNotes[part] = -1;
-    }
-  }
+  // Beam search to find best voicing across all parts
+  // Each state: { notes: {partId: midi}, score: number }
+  const BEAM_WIDTH = 30;
+  let beam = [{ notes: {}, score: 0, lastNote: -Infinity }];
 
-  // Find best voicing by brute-force search with scoring
-  let bestScore = Infinity;
-  let bestVoicing = null;
+  for (let i = 0; i < activeParts.length; i++) {
+    const part = activeParts[i];
+    const nextBeam = [];
 
-  for (const bass of candidates.bass) {
-    for (const tenor of candidates.tenor) {
-      if (tenor <= bass) continue; // no voice crossing
-      if (tenor - bass > 19) continue; // max ~octave+fifth between bass-tenor
-      for (const alto of candidates.alto) {
-        if (alto <= tenor) continue;
-        if (alto - tenor > 12) continue; // max octave between tenor-alto
-        for (const soprano of candidates.soprano) {
-          if (soprano <= alto) continue;
-          if (soprano - alto > 12) continue; // max octave between alto-soprano
+    for (const state of beam) {
+      if (candidates[i].length === 0) {
+        // No valid note for this part
+        const newState = {
+          notes: { ...state.notes, [part.id]: -1 },
+          score: state.score + 100, // penalty for missing voice
+          lastNote: state.lastNote
+        };
+        nextBeam.push(newState);
+        continue;
+      }
 
-          const candidate = { bass, tenor, alto, soprano };
-          let score = 0;
+      for (const note of candidates[i]) {
+        // Voice crossing check: must be at or above previous voice
+        if (i > 0 && note < state.lastNote) continue;
+        // Max spacing check between adjacent voices
+        if (i > 0 && state.lastNote > 0 && note - state.lastNote > 19) continue;
 
-          // Movement cost (most important)
-          if (previousVoicing) {
-            for (const part of PARTS) {
-              if (previousVoicing[part] >= 0) {
-                score += Math.abs(candidate[part] - previousVoicing[part]) * 2;
+        let score = state.score;
+
+        // Unison penalty (same note as adjacent voice below)
+        if (i > 0 && note === state.lastNote) score += 10;
+
+        // Voice leading cost
+        if (previousVoicing && previousVoicing[part.id] >= 0) {
+          score += Math.abs(note - previousVoicing[part.id]) * 2;
+          // Common tone bonus
+          if (note === previousVoicing[part.id]) score -= 3;
+        }
+
+        // Spacing cost for upper voices (prefer close)
+        if (i > 0 && state.lastNote > 0) {
+          score += (note - state.lastNote) * 0.3;
+        }
+
+        // Range midpoint proximity
+        score += Math.abs(note - part.mid) * 0.1;
+
+        // Parallel 5ths/octaves penalty with ALL previously assigned voices
+        if (previousVoicing) {
+          for (let j = 0; j < i; j++) {
+            const pj = activeParts[j];
+            const prevJ = previousVoicing[pj.id];
+            const prevI = previousVoicing[part.id];
+            const newJ = state.notes[pj.id];
+            if (prevJ >= 0 && prevI >= 0 && newJ >= 0) {
+              const prevInt = Math.abs(prevI - prevJ) % 12;
+              const newInt = Math.abs(note - newJ) % 12;
+              const bothMoved = prevJ !== newJ && prevI !== note;
+              const dir1 = Math.sign(newJ - prevJ);
+              const dir2 = Math.sign(note - prevI);
+              if (bothMoved && dir1 === dir2 && (newInt === 7 || newInt === 0) && prevInt === newInt) {
+                score += 50;
               }
             }
-
-            // Parallel 5ths/octaves penalty
-            for (let i = 0; i < PARTS.length - 1; i++) {
-              for (let j = i + 1; j < PARTS.length; j++) {
-                const p1 = PARTS[i], p2 = PARTS[j];
-                const prevInt = Math.abs(previousVoicing[p2] - previousVoicing[p1]) % 12;
-                const newInt = Math.abs(candidate[p2] - candidate[p1]) % 12;
-                const bothMoved = previousVoicing[p1] !== candidate[p1] && previousVoicing[p2] !== candidate[p2];
-                // Same direction motion
-                const dir1 = Math.sign(candidate[p1] - previousVoicing[p1]);
-                const dir2 = Math.sign(candidate[p2] - previousVoicing[p2]);
-                if (bothMoved && dir1 === dir2 && (newInt === 7 || newInt === 0) && prevInt === newInt) {
-                  score += 50; // heavy penalty
-                }
-              }
-            }
-
-            // Common tone bonus
-            for (const part of PARTS) {
-              if (previousVoicing[part] === candidate[part]) score -= 3;
-            }
-          }
-
-          // Spacing: prefer upper voices close together
-          score += (soprano - alto) * 0.3;
-          score += (alto - tenor) * 0.3;
-
-          // Prefer voicings near each part's RANGE_MID
-          for (const part of PARTS) {
-            score += Math.abs(candidate[part] - RANGE_MID[part]) * 0.1;
-          }
-
-          if (score < bestScore) {
-            bestScore = score;
-            bestVoicing = candidate;
           }
         }
+
+        nextBeam.push({
+          notes: { ...state.notes, [part.id]: note },
+          score,
+          lastNote: note
+        });
       }
     }
+
+    // Prune beam
+    nextBeam.sort((a, b) => a.score - b.score);
+    beam = nextBeam.slice(0, BEAM_WIDTH);
+
+    if (beam.length === 0) break;
   }
 
-  if (bestVoicing) {
-    for (const part of PARTS) partNotes[part] = bestVoicing[part];
+  if (beam.length > 0) {
+    const best = beam[0];
+    for (const part of activeParts) {
+      partNotes[part.id] = best.notes[part.id] !== undefined ? best.notes[part.id] : -1;
+    }
+  } else {
+    // Fallback: assign each part the candidate closest to its midpoint
+    for (let i = 0; i < activeParts.length; i++) {
+      const part = activeParts[i];
+      if (candidates[i].length > 0) {
+        let best = candidates[i][0], bestDist = Math.abs(best - part.mid);
+        for (const n of candidates[i]) {
+          const d = Math.abs(n - part.mid);
+          if (d < bestDist) { bestDist = d; best = n; }
+        }
+        partNotes[part.id] = best;
+      } else {
+        partNotes[part.id] = -1;
+      }
+    }
   }
 }
 
 function assignPitchClasses(chordTones, root) {
-  // For 4 voices with a triad (3 chord tones): double the root
-  // rootInBass: bass always gets root
   const result = {};
-  const available = [...chordTones];
+  const n = activeParts.length;
 
-  if (rootInBass) {
-    result.bass = root;
-    // Distribute remaining tones to tenor, alto, soprano
-    // With 3 chord tones and 3 remaining voices: one gets doubled root
-    const remaining = ['tenor', 'alto', 'soprano'];
-    const tones = [...chordTones];
-    // Double root: add extra root
-    if (tones.length < remaining.length) {
-      // Need to double. Double root first, then 5th
-      while (tones.length < remaining.length) {
-        if (tones.length === chordTones.length) tones.push(root); // double root
-        else if (chordTones.length >= 3) tones.push(chordTones[2]); // double 5th
-        else tones.push(root);
-      }
-    }
-    // Sort tones low to high by RANGE_MID for assignment
-    const sortedTones = tones.sort((a, b) => a - b);
-    const sortedParts = [...remaining].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
-    for (let i = 0; i < sortedParts.length; i++) {
-      result[sortedParts[i]] = sortedTones[i % sortedTones.length];
+  if (n === 0) return result;
+
+  // Build pool of pitch classes: chord tones + doublings
+  // Priority for doubling: root, then 5th, then 3rd
+  const tones = [...chordTones];
+  while (tones.length < n) {
+    if (tones.length === chordTones.length) tones.push(root); // double root first
+    else if (chordTones.length >= 3) tones.push(chordTones[2]); // double 5th
+    else tones.push(root); // fallback: more roots
+  }
+
+  // Sort parts by range (low to high)
+  const sortedParts = [...activeParts].sort((a, b) => a.mid - b.mid);
+
+  if (rootInBass && n > 1) {
+    // Bass always gets root
+    result[sortedParts[0].id] = root;
+    // Remove one root from tones pool
+    const rootIdx = tones.indexOf(root);
+    const remainingTones = [...tones];
+    if (rootIdx >= 0) remainingTones.splice(rootIdx, 1);
+    // Ensure enough tones for remaining voices
+    while (remainingTones.length < n - 1) remainingTones.push(root);
+    // Sort remaining tones and assign to remaining voices
+    remainingTones.sort((a, b) => a - b);
+    for (let i = 1; i < n; i++) {
+      result[sortedParts[i].id] = remainingTones[(i - 1) % remainingTones.length];
     }
   } else {
-    // No root-in-bass constraint: distribute chord tones evenly
-    const tones = [...chordTones];
-    while (tones.length < 4) {
-      if (tones.length === chordTones.length) tones.push(root);
-      else if (chordTones.length >= 3) tones.push(chordTones[2]);
-      else tones.push(root);
-    }
-    const sortedTones = tones.sort((a, b) => a - b);
-    const sortedParts = [...PARTS].sort((a, b) => RANGE_MID[a] - RANGE_MID[b]);
-    for (let i = 0; i < sortedParts.length; i++) {
-      result[sortedParts[i]] = sortedTones[i % sortedTones.length];
+    // No root-in-bass constraint: distribute evenly
+    tones.sort((a, b) => a - b);
+    for (let i = 0; i < n; i++) {
+      result[sortedParts[i].id] = tones[i % tones.length];
     }
   }
 
@@ -961,31 +1277,26 @@ function updateStaffDisplay() {
   if (!container) return;
   if (!autoVoicing) { container.innerHTML = ''; return; }
 
-  // SVG viewBox dimensions
   const vw = 700, vh = 160;
   const staffTop = 35, lineGap = 12;
   const bottomLine = staffTop + 4 * lineGap;
 
   let svg = `<svg width="100%" viewBox="0 0 ${vw} ${vh}" style="display:block;" preserveAspectRatio="xMinYMid meet">`;
 
-  // 5 staff lines
   for (let i = 0; i < 5; i++) {
     const y = staffTop + i * lineGap;
     svg += `<line x1="10" y1="${y}" x2="${vw-10}" y2="${y}" stroke="#555" stroke-width="1"/>`;
   }
 
-  // Treble clef (G-clef) — SVG path approximation positioned at the left
-  const clefX = 30, clefY = staffTop + 2 * lineGap; // centered on B4 line
+  const clefX = 30, clefY = staffTop + 2 * lineGap;
   svg += `<text x="${clefX}" y="${clefY + 18}" font-size="58" fill="#999" text-anchor="middle" font-family="serif">𝄞</text>`;
 
-  // Key signature
   const sig = getEffectiveSig();
-  let keySigEndX = 55; // start drawing key sig after clef
+  let keySigEndX = 55;
 
   if (sig > 0) {
-    // Sharps — order: F, C, G, D, A, E, B
-    const sharpSteps = [0, 3, -1, 2, 5, 1, 4]; // F5, C5, G5(above), D5, A4, E5, B4
-    const sharpGap = 8; // compact like real notation
+    const sharpSteps = [0, 3, -1, 2, 5, 1, 4];
+    const sharpGap = 8;
     for (let i = 0; i < sig; i++) {
       const sx = keySigEndX + i * sharpGap;
       const sy = staffTop + sharpSteps[i] * (lineGap / 2);
@@ -993,9 +1304,8 @@ function updateStaffDisplay() {
     }
     keySigEndX += sig * sharpGap + 4;
   } else if (sig < 0) {
-    // Flats — order: B, E, A, D, G, C, F
-    const flatSteps = [4, 1, 5, 2, 6, 3, 7]; // B4, E5, A4, D5, G4, C5, F4
-    const flatGap = 8; // compact like real notation
+    const flatSteps = [4, 1, 5, 2, 6, 3, 7];
+    const flatGap = 8;
     for (let i = 0; i < -sig; i++) {
       const fx = keySigEndX + i * flatGap;
       const fy = staffTop + flatSteps[i] * (lineGap / 2);
@@ -1004,23 +1314,11 @@ function updateStaffDisplay() {
     keySigEndX += (-sig) * flatGap + 4;
   }
 
-  // Compute 7 scale degree notes
   const scale = SCALE_DEGREES[selectedKey.mode];
-  const startOctave = (selectedKey.tonic <= 5) ? 4 : 4; // start in octave 4
-  const startMidi = selectedKey.tonic + (startOctave * 12) + 12; // MIDI = pitchClass + (octave+1)*12
-  // Actually: MIDI 60 = C4, so tonic in octave 4 = tonic + 60 for C, generally: 48 + 12 + tonic for octave 4
-  // MIDI for C4 = 60. So for tonic T in octave 4: midi = 60 + T (if T is offset from C)
-  // Wait — tonic is pitch class 0=C, 2=D, etc. So tonic T in octave 4 = 60 + T? No.
-  // MIDI 60=C4, 62=D4, 64=E4. So pitchClass P in octave 4 = 60 + P? No, that's wrong for sharps.
-  // MIDI note = (octave + 1) * 12 + pitchClass. So octave 4, pitchClass P → (4+1)*12 + P = 60 + P.
-  // C4 = 60+0 = 60 ✓, D4 = 60+2 = 62 ✓, E4 = 60+4 = 64 ✓
-
   const degreeNotes = [];
-  let baseMidi = 60 + selectedKey.tonic; // tonic in octave 4
-  // If the 7th degree would be too high (above ~F5=77), shift down an octave
+  let baseMidi = 60 + selectedKey.tonic;
   const seventhInterval = scale[6].interval;
   if (baseMidi + seventhInterval > 79) baseMidi -= 12;
-  // If tonic is too low for the staff (below C4=60 ledger line area), shift up
   if (baseMidi < 55) baseMidi += 12;
 
   for (let d = 0; d < 7; d++) {
@@ -1029,16 +1327,14 @@ function updateStaffDisplay() {
     degreeNotes.push({ midi, pc, quality: scale[d].quality, degree: d + 1 });
   }
 
-  // Draw noteheads evenly spaced after key signature
   const noteStartX = keySigEndX + 20;
   const noteEndX = vw - 30;
-  const noteSpacing = (noteEndX - noteStartX) / 6; // 7 notes, 6 gaps
+  const noteSpacing = (noteEndX - noteStartX) / 6;
 
   for (let d = 0; d < 7; d++) {
     const nx = noteStartX + d * noteSpacing;
     const ny = midiToStaffY(degreeNotes[d].midi, staffTop, lineGap);
 
-    // Ledger lines if needed
     if (ny > bottomLine + lineGap / 2) {
       for (let ly = bottomLine + lineGap; ly <= ny + 1; ly += lineGap) {
         svg += `<line x1="${nx-10}" y1="${ly}" x2="${nx+10}" y2="${ly}" stroke="#555" stroke-width="1"/>`;
@@ -1050,16 +1346,13 @@ function updateStaffDisplay() {
       }
     }
 
-    // Notehead ellipse — neutral color (not color-coded)
     const isActive = currentChord && degreeNotes[d].pc === currentChord.root;
     const fill = isActive ? '#fbbf24' : '#aaa';
     svg += `<ellipse cx="${nx}" cy="${ny}" rx="7" ry="5" fill="${fill}" transform="rotate(-10,${nx},${ny})"/>`;
 
-    // Digit label below staff
     const digitY = bottomLine + lineGap * 3.5;
     svg += `<text x="${nx}" y="${digitY}" text-anchor="middle" fill="#ccc" font-size="15" font-weight="bold">${d + 1}</text>`;
 
-    // Chord symbol below digit — reflect modifier override if held
     let displayQuality = degreeNotes[d].quality;
     if (chordModifiers.dim) displayQuality = 'dim';
     else if (chordModifiers.min) displayQuality = 'minor';
@@ -1074,33 +1367,20 @@ function updateStaffDisplay() {
 }
 
 function midiToStaffY(midi, staffTop, lineGap) {
-  // Map MIDI note to Y position on treble clef staff
-  // F5 (MIDI 77) = top line = staffTop
-  // E4 (MIDI 64) = bottom line = staffTop + 4*lineGap
-  // Each staff position is lineGap/2 apart
-  //
-  // Enharmonic-aware: use the key signature to decide if accidentals
-  // are sharps (position = lower natural) or flats (position = upper natural)
-  const naturalPositions = { 0: 0, 2: 1, 4: 2, 5: 3, 7: 4, 9: 5, 11: 6 }; // C=0,D=1,E=2,F=3,G=4,A=5,B=6
+  const naturalPositions = { 0: 0, 2: 1, 4: 2, 5: 3, 7: 4, 9: 5, 11: 6 };
   const semitone = midi % 12;
   const octave = Math.floor(midi / 12) - 1;
 
   let notePos = naturalPositions[semitone];
   if (notePos === undefined) {
-    // Accidental — check if key uses flats or sharps
     const sig = getEffectiveSig();
     if (sig < 0) {
-      // Flat key: accidental is a flat, so use the upper natural's position
-      // e.g., Bb → B position, Eb → E position, Ab → A position
       notePos = naturalPositions[semitone + 1];
     } else {
-      // Sharp key: accidental is a sharp, so use the lower natural's position
-      // e.g., C# → C position, F# → F position
       notePos = naturalPositions[semitone - 1];
     }
   }
 
-  // F5 absolute position: octave 5, note F (pos 3) = 5*7 + 3 = 38
   const refPos = 5 * 7 + 3;
   const absPos = octave * 7 + notePos;
   const stepsFromTop = refPos - absPos;
@@ -1112,7 +1392,6 @@ function midiToStaffY(midi, staffTop, lineGap) {
 function updatePianoLabels() {
   const keys = document.querySelectorAll('.key');
   if (autoVoicing) {
-    // Build pitch class → degree number map
     const scale = SCALE_DEGREES[selectedKey.mode];
     const pcToDegree = {};
     for (let d = 0; d < 7; d++) {
@@ -1128,7 +1407,6 @@ function updatePianoLabels() {
       }
     });
   } else {
-    // Restore original keyboard shortcut labels
     keys.forEach(k => {
       const midi = parseInt(k.dataset.midi);
       const bindKey = Object.entries(KEY_TO_MIDI).find(([key, m]) => m === midi);
@@ -1146,9 +1424,10 @@ function updateTargetHighlight() {
   const anyModifier = modifiers.z || modifiers.x || modifiers.c || modifiers.v;
   const targetParts = getTargetParts();
   document.querySelectorAll('.part-column').forEach(c => {
-    const part = c.dataset.part;
-    c.style.borderColor = anyModifier && targetParts.includes(part)
-      ? PART_COLORS[part] : 'transparent';
+    const pid = c.dataset.part;
+    const part = getPartById(pid);
+    c.style.borderColor = anyModifier && targetParts.includes(pid) && part
+      ? part.color : 'transparent';
   });
 }
 
@@ -1188,6 +1467,19 @@ bpmInputEl.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
 });
 
+// numParts input editing
+const numPartsInputEl = document.getElementById('numPartsInput');
+numPartsInputEl.addEventListener('change', (e) => {
+  let val = parseInt(e.target.value);
+  if (isNaN(val) || val < 1) val = 1;
+  if (val > 12) val = 12;
+  e.target.value = val;
+  setNumParts(val);
+});
+numPartsInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+});
+
 // === WebSocket ===
 
 function createRoom() {
@@ -1212,14 +1504,18 @@ function createRoom() {
       updateIndicators();
       sendSyllable();
       sendVolume();
+      // Send part config to any early joiners
+      sendPartConfig();
     } else if (msg.t === 'r') {
       singers = msg.singers || [];
-      const counts = { soprano: 0, alto: 0, tenor: 0, bass: 0 };
+      // Update counts in part columns
+      const counts = {};
+      for (const part of activeParts) counts[part.id] = 0;
       for (const s of singers) counts[s.part] = (counts[s.part] || 0) + 1;
-      document.getElementById('countS').textContent = counts.soprano;
-      document.getElementById('countA').textContent = counts.alto;
-      document.getElementById('countT').textContent = counts.tenor;
-      document.getElementById('countB').textContent = counts.bass;
+      for (const part of activeParts) {
+        const el = getPartEl(part.id, 'part-count');
+        if (el) el.textContent = counts[part.id] || 0;
+      }
       updateDisplay();
     }
   };
@@ -1333,6 +1629,7 @@ function buildPiano() {
 // Range indicators
 function buildRangeIndicators() {
   const container = document.getElementById('rangeIndicators');
+  if (!container) return;
   container.innerHTML = '';
   const pianoStart = 48, pianoEnd = 72;
 
@@ -1365,12 +1662,11 @@ function buildRangeIndicators() {
     return (clamped - pianoStart + 1) / (pianoEnd - pianoStart) * 100;
   }
 
-  const partOrder = ['bass', 'tenor', 'alto', 'soprano'];
   const lineH = 2, gap = 2;
 
-  for (let i = 0; i < partOrder.length; i++) {
-    const part = partOrder[i];
-    const [lo, hi] = RANGE[part];
+  for (let i = 0; i < activeParts.length; i++) {
+    const part = activeParts[i];
+    const [lo, hi] = part.range;
     const clampedLo = Math.max(pianoStart, lo);
     const clampedHi = Math.min(pianoEnd, hi);
     const leftPct = midiToLeftPct(clampedLo);
@@ -1378,7 +1674,7 @@ function buildRangeIndicators() {
 
     const line = document.createElement('div');
     line.className = 'range-line';
-    line.style.background = PART_COLORS[part];
+    line.style.background = part.color;
     line.style.left = leftPct + '%';
     line.style.width = (rightPct - leftPct) + '%';
     line.style.bottom = (i * (lineH + gap)) + 'px';
@@ -1437,7 +1733,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === ' ') { e.preventDefault(); toggleSustain(); return; }
 
   if (autoVoicing) {
-    // Scale degree keys 1-7
     if (e.code === 'Digit1') { e.preventDefault(); selectScaleDegree(1); return; }
     if (e.code === 'Digit2') { e.preventDefault(); selectScaleDegree(2); return; }
     if (e.code === 'Digit3') { e.preventDefault(); selectScaleDegree(3); return; }
@@ -1445,21 +1740,17 @@ document.addEventListener('keydown', (e) => {
     if (e.code === 'Digit5') { e.preventDefault(); selectScaleDegree(5); return; }
     if (e.code === 'Digit6') { e.preventDefault(); selectScaleDegree(6); return; }
     if (e.code === 'Digit7') { e.preventDefault(); selectScaleDegree(7); return; }
-    // Volume down remapped to 8 in auto mode
     if (e.code === 'Digit8') { e.preventDefault(); startVolHold(-1); return; }
-    // Volume up stays at 9
     if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
-    // Chord quality modifiers
     if (e.code === 'Digit0') { e.preventDefault(); chordModifiers.dim = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Minus') { e.preventDefault(); chordModifiers.min = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Equal') { e.preventDefault(); chordModifiers.maj = true; updateChordDisplay(); updateStaffDisplay(); return; }
   } else {
-    // Volume keys (manual mode)
     if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
     if (e.code === 'Digit6') { e.preventDefault(); startVolHold(-1); return; }
   }
 
-  // Note keys (piano/MIDI via keyboard)
+  // Note keys
   const key = e.key.toLowerCase();
   const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];
   if (midi !== undefined) {
@@ -1475,7 +1766,6 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keyup', (e) => {
-  // ZXCV modifier keys
   if (e.code === 'KeyZ') { modifiers.z = false; updateTargetHighlight(); return; }
   if (e.code === 'KeyX') { modifiers.x = false; updateTargetHighlight(); return; }
   if (e.code === 'KeyC') { modifiers.c = false; updateTargetHighlight(); return; }
@@ -1486,9 +1776,8 @@ document.addEventListener('keyup', (e) => {
     if (e.code === 'Digit0') { chordModifiers.dim = false; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Minus') { chordModifiers.min = false; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Equal') { chordModifiers.maj = false; updateChordDisplay(); updateStaffDisplay(); return; }
-    // Scale degree releases: in non-sustain mode, silence
     if (!sustainMode && /^Digit[1-7]$/.test(e.code)) {
-      for (const part of PARTS) partNotes[part] = -1;
+      for (const pid of getPartIds()) partNotes[pid] = -1;
       currentChord = null;
       updateDisplay();
       updateChordDisplay();
@@ -1509,6 +1798,8 @@ document.addEventListener('keyup', (e) => {
   }
 });
 
+// === Initialize ===
+initParts(4);
 buildPiano();
 
 // Document-level pointer release for on-screen piano keys
