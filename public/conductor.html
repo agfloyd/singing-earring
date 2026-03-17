@@ -80,6 +80,14 @@
     </div>
     <div id="masterDisplayContainer" style="flex:1;"></div>
   </div>
+  <div id="choirVizSection" style="margin-top:12px;display:none;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div id="choirSizeLabel" style="font-size:0.85rem;color:#888;white-space:nowrap;min-width:90px;">Choir Size: 0</div>
+      <div style="flex:1;position:relative;">
+        <canvas id="choirCanvas" height="24" style="width:100%;height:24px;display:block;border-radius:4px;"></canvas>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="midiSection" class="section" style="display:none">
@@ -569,6 +577,7 @@ function initParts(n) {
 
   // Broadcast new part config to singers
   sendPartConfig();
+  updateChoirViz();
 }
 
 function setNumParts(n) {
@@ -678,12 +687,6 @@ function createPartColumn(part) {
   modifier.textContent = idx < 4 ? MODIFIER_KEYS[idx].toUpperCase() : '';
   col.appendChild(modifier);
 
-  // Singer count
-  const count = document.createElement('div');
-  count.className = 'part-count';
-  count.textContent = '0';
-  col.appendChild(count);
-
   // Syllable display
   const syl = document.createElement('div');
   syl.className = 'part-syllable';
@@ -695,6 +698,12 @@ function createPartColumn(part) {
   note.className = 'part-note';
   note.textContent = '';
   col.appendChild(note);
+
+  // Singer count (at the bottom)
+  const count = document.createElement('div');
+  count.className = 'part-count';
+  count.textContent = '0';
+  col.appendChild(count);
 
   // Volume bar
   const volWrap = document.createElement('div');
@@ -1517,6 +1526,7 @@ function createRoom() {
         if (el) el.textContent = counts[part.id] || 0;
       }
       updateDisplay();
+      updateChoirViz();
     }
   };
   ws.onclose = () => { document.getElementById('status').textContent = 'Disconnected'; };
@@ -1624,6 +1634,123 @@ function buildPiano() {
 
     piano.appendChild(key);
   }
+}
+
+// === Choir visualization ===
+
+function updateChoirViz() {
+  const canvas = document.getElementById('choirCanvas');
+  const section = document.getElementById('choirVizSection');
+  const sizeLabel = document.getElementById('choirSizeLabel');
+  if (!canvas || !section) return;
+
+  section.style.display = singers.length > 0 ? '' : 'none';
+  sizeLabel.textContent = `Choir Size: ${singers.length}`;
+
+  if (singers.length === 0) return;
+
+  // Set canvas resolution to match display size
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const w = rect.width;
+  const h = rect.height;
+
+  // Clear
+  ctx.clearRect(0, 0, w, h);
+
+  // Range: G2 (MIDI 43) to G5 (MIDI 79)
+  const vizLo = 43, vizHi = 79;
+  const vizRange = vizHi - vizLo;
+
+  function midiToX(midi) {
+    return ((midi - vizLo) / vizRange) * w;
+  }
+
+  // Draw baseline
+  const lineY = h * 0.5;
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, lineY);
+  ctx.lineTo(w, lineY);
+  ctx.stroke();
+
+  // Use 'lighter' composite for additive color blending
+  ctx.globalCompositeOperation = 'lighter';
+
+  // Draw each singer as a smear of light
+  for (const singer of singers) {
+    const part = getPartById(singer.part);
+    if (!part) continue;
+
+    // Get singer range or use part default
+    const sRange = singer.range || part.range;
+    const lo = sRange[0];
+    const hi = sRange[1];
+    const mid = (lo + hi) / 2;
+
+    // Position
+    const cx = midiToX(mid);
+    const leftX = midiToX(lo);
+    const rightX = midiToX(hi);
+    const halfWidth = Math.max((rightX - leftX) / 2, 3);
+
+    // Parse part color to RGB
+    const rgb = parseColor(part.color);
+
+    // Draw Gaussian-like smear using multiple overlapping translucent lines
+    const steps = Math.min(40, Math.max(12, Math.round(halfWidth)));
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps; // 0 = center, 1 = edge
+      // Gaussian falloff: opacity peaks at center, fades to edges
+      const alpha = Math.exp(-3 * t * t) * 0.4;
+      const xOffset = t * halfWidth;
+
+      ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+      ctx.lineWidth = 6;
+
+      // Right side
+      ctx.beginPath();
+      ctx.moveTo(cx + xOffset, lineY - 3);
+      ctx.lineTo(cx + xOffset, lineY + 3);
+      ctx.stroke();
+
+      // Left side (mirror)
+      if (s > 0) {
+        ctx.beginPath();
+        ctx.moveTo(cx - xOffset, lineY - 3);
+        ctx.lineTo(cx - xOffset, lineY + 3);
+        ctx.stroke();
+      }
+    }
+
+    // Bright center dot
+    ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.9)`;
+    ctx.beginPath();
+    ctx.arc(cx, lineY, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+const _colorCache = {};
+function parseColor(color) {
+  if (_colorCache[color]) return _colorCache[color];
+  // Parse HSL or hex to RGB using off-screen canvas
+  const c = document.createElement('canvas');
+  c.width = c.height = 1;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, 1, 1);
+  const d = ctx.getImageData(0, 0, 1, 1).data;
+  const rgb = [d[0], d[1], d[2]];
+  _colorCache[color] = rgb;
+  return rgb;
 }
 
 // Range indicators
