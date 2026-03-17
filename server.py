@@ -37,7 +37,7 @@ def generate_code():
 
 
 def broadcast_room_state(room, code):
-    singer_list = [{"id": info["id"], "part": info["part"]} for info in room["singers"].values()]
+    singer_list = [{"id": info["id"], "part": info["part"], "range": info.get("range")} for info in room["singers"].values()]
     msg = json.dumps({"t": "r", "code": code, "singers": singer_list})
     targets = list(room["singers"].keys())
     if room["conductor"]:
@@ -128,7 +128,11 @@ async def handler(websocket):
                         continue
                 room["next_id"] = room.get("next_id", 0) + 1
                 singer_id = room["next_id"]
-                room["singers"][websocket] = {"id": singer_id, "part": msg.get("part", "soprano")}
+                room["singers"][websocket] = {
+                    "id": singer_id,
+                    "part": msg.get("part", "soprano"),
+                    "range": msg.get("range"),
+                }
                 my_room = room
                 my_code = code
                 my_role = "singer"
@@ -143,6 +147,8 @@ async def handler(websocket):
                 info = my_room["singers"].get(websocket)
                 if info:
                     info["part"] = msg.get("part", info["part"])
+                    if "range" in msg:
+                        info["range"] = msg["range"]
                     broadcast_room_state(my_room, my_code)
 
     finally:

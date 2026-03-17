@@ -338,8 +338,16 @@ const KEY_SIGNATURES = {
   locrian:    { 0:-5, 1:2, 2:-3, 3:4, 4:-1, 5:6, 6:1, 7:-4, 8:3, 9:-2, 10:5, 11:0 },
 };
 
+function getEffectiveSig() {
+  let sig = KEY_SIGNATURES[selectedKey.mode][selectedKey.tonic];
+  // If user chose a flat tonic but lookup gives sharps, use enharmonic flats (and vice versa)
+  if (tonicAccidental === 'flat' && sig > 0) sig -= 12;
+  else if (tonicAccidental === 'sharp' && sig < 0) sig += 12;
+  return sig;
+}
+
 function noteNameInKey(pitchClass) {
-  const sig = KEY_SIGNATURES[selectedKey.mode][selectedKey.tonic];
+  const sig = getEffectiveSig();
   return sig >= 0 ? SHARP_NAMES[pitchClass] : FLAT_NAMES[pitchClass];
 }
 
@@ -393,8 +401,8 @@ function noteName(midi) {
   return NOTES[midi % 12] + (Math.floor(midi / 12) - 1);
 }
 
-function fitToRange(note, part) {
-  const [lo, hi] = RANGE[part];
+function fitToRange(note, part, singerRange) {
+  const [lo, hi] = singerRange || RANGE[part];
   while (note < lo) note += 12;
   while (note > hi) note -= 12;
   if (note < lo) note = lo;
@@ -461,7 +469,7 @@ function buildSingerAssignments() {
   const assignments = {};
   for (const singer of singers) {
     const note = partNotes[singer.part];
-    assignments[singer.id] = note >= 0 ? fitToRange(note, singer.part) : -1;
+    assignments[singer.id] = note >= 0 ? fitToRange(note, singer.part, singer.range) : -1;
   }
   return assignments;
 }
@@ -971,7 +979,7 @@ function updateStaffDisplay() {
   svg += `<text x="${clefX}" y="${clefY + 18}" font-size="58" fill="#999" text-anchor="middle" font-family="serif">𝄞</text>`;
 
   // Key signature
-  const sig = KEY_SIGNATURES[selectedKey.mode][selectedKey.tonic];
+  const sig = getEffectiveSig();
   let keySigEndX = 55; // start drawing key sig after clef
 
   if (sig > 0) {
@@ -1080,7 +1088,7 @@ function midiToStaffY(midi, staffTop, lineGap) {
   let notePos = naturalPositions[semitone];
   if (notePos === undefined) {
     // Accidental — check if key uses flats or sharps
-    const sig = KEY_SIGNATURES[selectedKey.mode][selectedKey.tonic];
+    const sig = getEffectiveSig();
     if (sig < 0) {
       // Flat key: accidental is a flat, so use the upper natural's position
       // e.g., Bb → B position, Eb → E position, Ab → A position

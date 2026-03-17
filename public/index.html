@@ -28,6 +28,26 @@
   .error { color: #e94560; font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
   .warnings { margin-top: 16px; font-size: 0.75rem; color: #666; line-height: 1.4; }
 
+  /* Range picker */
+  .range-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 12px 0 16px; font-size: 1rem; color: #ccc; }
+  .range-field { background: #16213e; border: 2px solid #0f3460; color: #eee; padding: 6px 10px; border-radius: 8px; font-size: 1rem; width: 60px; text-align: center; cursor: pointer; transition: border-color 0.15s; }
+  .range-field:focus, .range-field.active { border-color: #e94560; outline: none; }
+  .range-field::placeholder { color: #555; }
+
+  /* Range piano popup */
+  .range-piano-popup { display: none; background: #16213e; border: 2px solid #0f3460; border-radius: 12px; padding: 12px; margin: 8px 0; }
+  .range-piano-popup.visible { display: block; }
+  .range-piano-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .octave-btn { background: #0f3460; border: 1px solid #555; color: #ccc; width: 36px; height: 36px; border-radius: 8px; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .octave-btn:active { background: #1a4a8a; }
+  .range-piano { display: flex; position: relative; height: 80px; flex: 1; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .rp-key { position: relative; border: 1px solid #333; border-radius: 0 0 4px 4px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: 4px; font-size: 0.65rem; color: #888; transition: background 0.05s; }
+  .rp-key.white { background: #ddd; flex: 1; height: 80px; z-index: 1; color: #666; }
+  .rp-key.black { background: #222; width: 22px; height: 48px; margin-left: -11px; margin-right: -11px; z-index: 2; color: #999; font-size: 0.55rem; }
+  .rp-key.selected { background: #e94560 !important; color: #fff !important; }
+  .rp-key > * { pointer-events: none; }
+  .range-piano-hint { font-size: 0.85rem; color: #888; margin-top: 8px; text-align: center; }
+
   /* Singing screen */
   #singScreen { display: none; width: 100%; max-width: 360px; text-align: center; }
   .current-note { font-size: 6rem; font-weight: bold; line-height: 1; margin: 10px 0; transition: color 0.1s; height: 6rem; overflow: hidden; display: flex; align-items: center; justify-content: center; }
@@ -83,6 +103,23 @@
 
   <input type="text" class="code-input" id="codeInput" placeholder="Room code" maxlength="4" autocomplete="off" autocapitalize="characters">
 
+  <div class="range-row">
+    Range:
+    <input type="text" class="range-field" id="rangeLow" placeholder="—" readonly onclick="openRangePicker('low')" ondblclick="makeRangeEditable(this)" autocomplete="off">
+    to
+    <input type="text" class="range-field" id="rangeHigh" placeholder="—" readonly onclick="openRangePicker('high')" ondblclick="makeRangeEditable(this)" autocomplete="off">
+  </div>
+
+  <div class="range-piano-popup" id="rangePianoPopup">
+    <div class="range-piano-controls">
+      <button class="octave-btn" onclick="shiftRangeOctave(-1)">◀</button>
+      <div class="range-piano" id="rangePiano"></div>
+      <button class="octave-btn" onclick="shiftRangeOctave(1)">▶</button>
+    </div>
+    <div class="range-piano-hint" id="rangePianoHint"></div>
+  </div>
+
+  <div style="font-size:0.85rem;color:#666;margin-bottom:6px;">Or start with a preset category:</div>
   <div class="parts" id="parts">
     <button class="part-btn soprano" data-part="soprano" onclick="selectPart(this)">Soprano</button>
     <button class="part-btn alto" data-part="alto" onclick="selectPart(this)">Alto</button>
@@ -100,6 +137,20 @@
 </div>
 
 <div id="singScreen">
+  <div class="range-row" style="margin-top:0;">
+    Range:
+    <input type="text" class="range-field" id="singRangeLow" placeholder="—" readonly onclick="openSingRangePicker('low')" ondblclick="makeRangeEditable(this)" autocomplete="off">
+    to
+    <input type="text" class="range-field" id="singRangeHigh" placeholder="—" readonly onclick="openSingRangePicker('high')" ondblclick="makeRangeEditable(this)" autocomplete="off">
+  </div>
+  <div class="range-piano-popup" id="singRangePianoPopup">
+    <div class="range-piano-controls">
+      <button class="octave-btn" onclick="shiftSingRangeOctave(-1)">◀</button>
+      <div class="range-piano" id="singRangePiano"></div>
+      <button class="octave-btn" onclick="shiftSingRangeOctave(1)">▶</button>
+    </div>
+    <div class="range-piano-hint" id="singRangePianoHint"></div>
+  </div>
   <div class="part-label" id="partLabel"></div>
   <div class="part-switcher" id="partSwitcher">
     <button class="part-switch-btn soprano" onclick="switchPart('soprano')">S</button>
@@ -133,6 +184,13 @@ const RANGE = {
 };
 
 let selectedPart = null;
+let customRange = { low: null, high: null };
+let rangePickerTarget = null; // 'low' or 'high'
+let rangeOctave = 3; // current octave shown in range picker
+let rangePreviewNote = null; // currently sounding preview note
+let rangePreviewOsc = null; // oscillator for preview
+let rangePreviewGain = null; // gain for preview
+
 let ws = null;
 let audioCtx = null;
 let oscillators = [];
@@ -173,32 +231,430 @@ function selectPart(btn) {
   document.querySelectorAll('.part-btn').forEach(b => b.classList.remove('selected'));
   btn.classList.add('selected');
   selectedPart = btn.dataset.part;
+  // Set range as preset for this part
+  const r = RANGE[selectedPart];
+  customRange.low = r[0];
+  customRange.high = r[1];
+  document.getElementById('rangeLow').value = noteName(r[0]);
+  document.getElementById('rangeHigh').value = noteName(r[1]);
+  // Close picker if open
+  closeRangePicker();
   checkReady();
 }
 
 function checkReady() {
   const code = document.getElementById('codeInput').value.trim();
   const btn = document.getElementById('joinBtn');
-  if (code.length === 4 && selectedPart) {
+  if (code.length === 4 && customRange.low !== null && customRange.high !== null) {
     btn.classList.add('ready');
   } else {
     btn.classList.remove('ready');
   }
 }
 
+// === Range Picker ===
+
+function openRangePicker(target) {
+  rangePickerTarget = target;
+  // Set sensible starting octave
+  if (target === 'low') {
+    rangeOctave = customRange.low !== null ? Math.floor(customRange.low / 12) - 1 : 3;
+  } else {
+    rangeOctave = customRange.high !== null ? Math.floor(customRange.high / 12) - 1 : 4;
+  }
+  document.getElementById('rangePianoPopup').classList.add('visible');
+  document.getElementById('rangeLow').classList.toggle('active', target === 'low');
+  document.getElementById('rangeHigh').classList.toggle('active', target === 'high');
+  const hint = target === 'low'
+    ? 'Find the lowest note you feel comfortable singing'
+    : 'Find the highest note you feel comfortable singing';
+  document.getElementById('rangePianoHint').textContent = hint;
+  buildRangePiano();
+}
+
+function closeRangePicker() {
+  document.getElementById('rangePianoPopup').classList.remove('visible');
+  document.getElementById('rangeLow').classList.remove('active');
+  document.getElementById('rangeHigh').classList.remove('active');
+  rangePickerTarget = null;
+  stopRangePreview();
+}
+
+function shiftRangeOctave(dir) {
+  const newOctave = rangeOctave + dir;
+  if (newOctave < 1 || newOctave > 6) return;
+  rangeOctave = newOctave;
+  buildRangePiano();
+}
+
+function buildRangePiano() {
+  const container = document.getElementById('rangePiano');
+  container.innerHTML = '';
+  const blackKeys = new Set([1,3,6,8,10]);
+  const startMidi = (rangeOctave + 1) * 12; // C of this octave
+  const endMidi = startMidi + 12; // C to B (one octave)
+
+  const currentVal = rangePickerTarget === 'low' ? customRange.low : customRange.high;
+
+  for (let midi = startMidi; midi < endMidi; midi++) {
+    const semitone = midi % 12;
+    const isBlack = blackKeys.has(semitone);
+    const key = document.createElement('div');
+    key.className = `rp-key ${isBlack ? 'black' : 'white'}`;
+    if (midi === currentVal && rangePreviewNote === midi) key.classList.add('selected');
+    key.dataset.midi = midi;
+
+    const label = document.createElement('span');
+    label.textContent = NOTES[semitone] + rangeOctave;
+    key.appendChild(label);
+
+    key.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      onRangeKeyTap(midi);
+    });
+
+    container.appendChild(key);
+  }
+}
+
+function onRangeKeyTap(midi) {
+  if (!rangePickerTarget) return;
+
+  const currentVal = rangePickerTarget === 'low' ? customRange.low : customRange.high;
+
+  // Tapping the already-selected key silences it but keeps the value
+  if (midi === currentVal && rangePreviewNote === midi) {
+    stopRangePreview();
+    buildRangePiano();
+    return;
+  }
+
+  // Set the value
+  customRange[rangePickerTarget] = midi;
+  const fieldId = rangePickerTarget === 'low' ? 'rangeLow' : 'rangeHigh';
+  document.getElementById(fieldId).value = noteName(midi);
+
+  // Auto-swap if low > high
+  if (customRange.low !== null && customRange.high !== null && customRange.low > customRange.high) {
+    const tmp = customRange.low;
+    customRange.low = customRange.high;
+    customRange.high = tmp;
+    document.getElementById('rangeLow').value = noteName(customRange.low);
+    document.getElementById('rangeHigh').value = noteName(customRange.high);
+  }
+
+  // Play the note
+  playRangePreview(midi);
+
+  // Update visual selection and auto-classify part
+  buildRangePiano();
+  updatePartFromRange();
+  checkReady();
+}
+
+function initRangeAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume();
+  }
+  if (!rangePreviewGain) {
+    rangePreviewGain = audioCtx.createGain();
+    rangePreviewGain.gain.value = 0;
+    rangePreviewGain.connect(audioCtx.destination);
+  }
+}
+
+function playRangePreview(midi) {
+  initRangeAudio();
+  stopRangePreview();
+
+  const freq = midiToFreq(midi);
+  rangePreviewOsc = audioCtx.createOscillator();
+  rangePreviewOsc.type = 'sine';
+  rangePreviewOsc.frequency.value = freq;
+  rangePreviewOsc.connect(rangePreviewGain);
+  rangePreviewOsc.start();
+  rangePreviewGain.gain.setTargetAtTime(0.3, audioCtx.currentTime, 0.01);
+  rangePreviewNote = midi;
+}
+
+function stopRangePreview() {
+  if (rangePreviewOsc) {
+    if (rangePreviewGain && audioCtx) {
+      rangePreviewGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+    }
+    const osc = rangePreviewOsc;
+    setTimeout(() => { try { osc.stop(); } catch {} }, 100);
+    rangePreviewOsc = null;
+    rangePreviewNote = null;
+  }
+}
+
+// Parse a note name like "C#4", "Eb3", "D4" into a MIDI number, or null if invalid
+function parseNoteName(str) {
+  const m = str.trim().match(/^([A-Ga-g])(#|b|♯|♭)?(\d)$/);
+  if (!m) return null;
+  const letter = m[1].toUpperCase();
+  const accidental = m[2] || '';
+  const octave = parseInt(m[3]);
+  const letterToSemitone = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
+  let semitone = letterToSemitone[letter];
+  if (semitone === undefined) return null;
+  if (accidental === '#' || accidental === '♯') semitone++;
+  else if (accidental === 'b' || accidental === '♭') semitone--;
+  semitone = ((semitone % 12) + 12) % 12;
+  const midi = (octave + 1) * 12 + semitone;
+  if (midi < 24 || midi > 96) return null;
+  return midi;
+}
+
+// Auto-classify range into closest part preset
+function classifyRange(low, high) {
+  if (low === null || high === null) return null;
+  const mid = (low + high) / 2;
+  let bestPart = null, bestDist = Infinity;
+  for (const [part, [pLo, pHi]] of Object.entries(RANGE)) {
+    const pMid = (pLo + pHi) / 2;
+    const dist = Math.abs(mid - pMid);
+    if (dist < bestDist) { bestDist = dist; bestPart = part; }
+  }
+  return bestPart;
+}
+
+// Update part button highlighting based on current range
+function updatePartFromRange() {
+  const part = classifyRange(customRange.low, customRange.high);
+  if (part) {
+    selectedPart = part;
+    document.querySelectorAll('.part-btn').forEach(b => {
+      b.classList.toggle('selected', b.dataset.part === part);
+    });
+  }
+}
+
+function makeRangeEditable(field) {
+  field.removeAttribute('readonly');
+  field.select();
+  // Re-add readonly when focus leaves
+  field.addEventListener('blur', function restoreReadonly() {
+    field.setAttribute('readonly', '');
+    field.removeEventListener('blur', restoreReadonly);
+  });
+}
+
+// Handle Enter/Escape on range fields (for text editing mode)
+function handleRangeFieldKey(e, target) {
+  const field = e.target;
+
+  // Arrow keys: shift note by semitone when picker is open and note is playing
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && field.hasAttribute('readonly')) {
+    e.preventDefault();
+    if (!rangePickerTarget || rangePreviewNote === null) return;
+    const dir = e.key === 'ArrowRight' ? 1 : -1;
+    const newMidi = rangePreviewNote + dir;
+    if (newMidi < 24 || newMidi > 96) return;
+    onRangeKeyTap(newMidi);
+    // Switch octave display if needed
+    const newOctave = Math.floor(newMidi / 12) - 1;
+    if (newOctave !== rangeOctave) {
+      rangeOctave = newOctave;
+      buildRangePiano();
+    }
+    return;
+  }
+
+  if (e.key === 'Enter' || e.key === 'Escape') {
+    e.preventDefault();
+    // Only parse text if field was editable
+    if (!field.hasAttribute('readonly')) {
+      const midi = parseNoteName(field.value);
+      if (midi !== null) {
+        customRange[target] = midi;
+        field.value = noteName(midi);
+        // Auto-swap if low > high
+        if (customRange.low !== null && customRange.high !== null && customRange.low > customRange.high) {
+          const tmp = customRange.low;
+          customRange.low = customRange.high;
+          customRange.high = tmp;
+          document.getElementById('rangeLow').value = noteName(customRange.low);
+          document.getElementById('rangeHigh').value = noteName(customRange.high);
+        }
+        updatePartFromRange();
+        if (rangePickerTarget === target) buildRangePiano();
+        checkReady();
+      } else if (field.value.trim() === '') {
+        customRange[target] = null;
+        checkReady();
+      } else {
+        // Invalid input — restore previous value
+        field.value = customRange[target] !== null ? noteName(customRange[target]) : '';
+      }
+    }
+    field.blur();
+    if (e.key === 'Escape') closeRangePicker();
+  }
+}
+
+document.getElementById('rangeLow').addEventListener('keydown', (e) => handleRangeFieldKey(e, 'low'));
+document.getElementById('rangeHigh').addEventListener('keydown', (e) => handleRangeFieldKey(e, 'high'));
+
 document.getElementById('codeInput').addEventListener('input', (e) => {
   e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
   checkReady();
 });
 
+// === Sing-screen Range Picker ===
+let singRangePickerTarget = null;
+let singRangeOctave = 3;
+
+function openSingRangePicker(target) {
+  singRangePickerTarget = target;
+  if (target === 'low') {
+    singRangeOctave = customRange.low !== null ? Math.floor(customRange.low / 12) - 1 : 3;
+  } else {
+    singRangeOctave = customRange.high !== null ? Math.floor(customRange.high / 12) - 1 : 4;
+  }
+  document.getElementById('singRangePianoPopup').classList.add('visible');
+  document.getElementById('singRangeLow').classList.toggle('active', target === 'low');
+  document.getElementById('singRangeHigh').classList.toggle('active', target === 'high');
+  document.getElementById('singRangePianoHint').textContent = target === 'low'
+    ? 'Find the lowest note you feel comfortable singing'
+    : 'Find the highest note you feel comfortable singing';
+  buildSingRangePiano();
+}
+
+function closeSingRangePicker() {
+  document.getElementById('singRangePianoPopup').classList.remove('visible');
+  document.getElementById('singRangeLow').classList.remove('active');
+  document.getElementById('singRangeHigh').classList.remove('active');
+  singRangePickerTarget = null;
+  stopRangePreview();
+}
+
+function shiftSingRangeOctave(dir) {
+  const newOctave = singRangeOctave + dir;
+  if (newOctave < 1 || newOctave > 6) return;
+  singRangeOctave = newOctave;
+  buildSingRangePiano();
+}
+
+function buildSingRangePiano() {
+  const container = document.getElementById('singRangePiano');
+  container.innerHTML = '';
+  const blackKeys = new Set([1,3,6,8,10]);
+  const startMidi = (singRangeOctave + 1) * 12;
+  const endMidi = startMidi + 12;
+  const currentVal = singRangePickerTarget === 'low' ? customRange.low : customRange.high;
+
+  for (let midi = startMidi; midi < endMidi; midi++) {
+    const semitone = midi % 12;
+    const isBlack = blackKeys.has(semitone);
+    const key = document.createElement('div');
+    key.className = `rp-key ${isBlack ? 'black' : 'white'}`;
+    if (midi === currentVal && rangePreviewNote === midi) key.classList.add('selected');
+    key.dataset.midi = midi;
+    const label = document.createElement('span');
+    label.textContent = NOTES[semitone] + singRangeOctave;
+    key.appendChild(label);
+    key.addEventListener('pointerdown', (e) => { e.preventDefault(); onSingRangeKeyTap(midi); });
+    container.appendChild(key);
+  }
+}
+
+function onSingRangeKeyTap(midi) {
+  if (!singRangePickerTarget) return;
+  const currentVal = singRangePickerTarget === 'low' ? customRange.low : customRange.high;
+
+  if (midi === currentVal && rangePreviewNote === midi) {
+    stopRangePreview();
+    buildSingRangePiano();
+    return;
+  }
+
+  customRange[singRangePickerTarget] = midi;
+  const fieldId = singRangePickerTarget === 'low' ? 'singRangeLow' : 'singRangeHigh';
+  document.getElementById(fieldId).value = noteName(midi);
+
+  if (customRange.low !== null && customRange.high !== null && customRange.low > customRange.high) {
+    const tmp = customRange.low;
+    customRange.low = customRange.high;
+    customRange.high = tmp;
+    document.getElementById('singRangeLow').value = noteName(customRange.low);
+    document.getElementById('singRangeHigh').value = noteName(customRange.high);
+  }
+
+  playRangePreview(midi);
+  buildSingRangePiano();
+  buildMiniPiano();
+
+  // Update part classification and notify server
+  const newPart = classifyRange(customRange.low, customRange.high);
+  if (newPart && newPart !== selectedPart) {
+    selectedPart = newPart;
+    updatePartDisplay();
+  }
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({ t: 'part', part: selectedPart, range: [customRange.low, customRange.high] }));
+  }
+}
+
+// Keyboard handlers for sing-screen range fields
+function handleSingRangeFieldKey(e, target) {
+  const field = e.target;
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && field.hasAttribute('readonly')) {
+    e.preventDefault();
+    if (!singRangePickerTarget || rangePreviewNote === null) return;
+    const dir = e.key === 'ArrowRight' ? 1 : -1;
+    const newMidi = rangePreviewNote + dir;
+    if (newMidi < 24 || newMidi > 96) return;
+    onSingRangeKeyTap(newMidi);
+    const newOctave = Math.floor(newMidi / 12) - 1;
+    if (newOctave !== singRangeOctave) { singRangeOctave = newOctave; buildSingRangePiano(); }
+    return;
+  }
+  if (e.key === 'Enter' || e.key === 'Escape') {
+    e.preventDefault();
+    if (!field.hasAttribute('readonly')) {
+      const midi = parseNoteName(field.value);
+      if (midi !== null) {
+        customRange[target] = midi;
+        field.value = noteName(midi);
+        if (customRange.low !== null && customRange.high !== null && customRange.low > customRange.high) {
+          const tmp = customRange.low; customRange.low = customRange.high; customRange.high = tmp;
+          document.getElementById('singRangeLow').value = noteName(customRange.low);
+          document.getElementById('singRangeHigh').value = noteName(customRange.high);
+        }
+        buildMiniPiano();
+        const newPart = classifyRange(customRange.low, customRange.high);
+        if (newPart && newPart !== selectedPart) { selectedPart = newPart; updatePartDisplay(); }
+        if (ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ t: 'part', part: selectedPart, range: [customRange.low, customRange.high] }));
+        }
+        if (singRangePickerTarget === target) buildSingRangePiano();
+      } else if (field.value.trim() !== '') {
+        field.value = customRange[target] !== null ? noteName(customRange[target]) : '';
+      }
+    }
+    field.blur();
+    if (e.key === 'Escape') closeSingRangePicker();
+  }
+}
+
+document.getElementById('singRangeLow').addEventListener('keydown', (e) => handleSingRangeFieldKey(e, 'low'));
+document.getElementById('singRangeHigh').addEventListener('keydown', (e) => handleSingRangeFieldKey(e, 'high'));
+
 function switchPart(part) {
   if (part === selectedPart) return;
   selectedPart = part;
+  // Update range to preset for new part
+  const r = RANGE[part];
+  customRange.low = r[0];
+  customRange.high = r[1];
   updatePartDisplay();
   buildMiniPiano();
   updateSyllableDisplay();
   if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ t: 'part', part }));
+    ws.send(JSON.stringify({ t: 'part', part, range: [customRange.low, customRange.high] }));
   }
 }
 
@@ -216,7 +672,8 @@ function buildMiniPiano() {
   const container = document.getElementById('miniPiano');
   container.innerHTML = '';
   if (!selectedPart) return;
-  const [lo, hi] = RANGE[selectedPart];
+  const lo = customRange.low !== null ? customRange.low : RANGE[selectedPart][0];
+  const hi = customRange.high !== null ? customRange.high : RANGE[selectedPart][1];
   const blackKeys = new Set([1,3,6,8,10]);
   for (let midi = lo; midi <= hi; midi++) {
     const semitone = midi % 12;
@@ -428,7 +885,10 @@ function connectWebSocket(code, isReconnect) {
 
   ws.onopen = () => {
     reconnectAttempts = 0;
-    ws.send(JSON.stringify({ t: 'join', code, part: selectedPart }));
+    const part = selectedPart || classifyRange(customRange.low, customRange.high) || 'soprano';
+    const range = (customRange.low !== null && customRange.high !== null)
+      ? [customRange.low, customRange.high] : RANGE[part];
+    ws.send(JSON.stringify({ t: 'join', code, part, range }));
   };
 
   ws.onmessage = (e) => {
@@ -445,6 +905,13 @@ function connectWebSocket(code, isReconnect) {
       document.getElementById('connStatus').textContent = isReconnect ? 'Reconnected' : 'Connected';
       document.getElementById('connStatus').className = 'conn-status connected';
       requestWakeLock();
+      // Populate sing-screen range fields with current range values
+      if (customRange.low !== null) {
+        document.getElementById('singRangeLow').value = noteName(customRange.low);
+      }
+      if (customRange.high !== null) {
+        document.getElementById('singRangeHigh').value = noteName(customRange.high);
+      }
 
     } else if (msg.t === 'error') {
       if (isReconnect) {
@@ -513,8 +980,10 @@ function connectWebSocket(code, isReconnect) {
 
 function joinRoom() {
   const code = document.getElementById('codeInput').value.trim().toUpperCase();
-  if (code.length !== 4 || !selectedPart) return;
+  if (code.length !== 4 || customRange.low === null || customRange.high === null) return;
 
+  closeRangePicker();
+  stopRangePreview();
   initAudio();
   document.getElementById('error').textContent = '';
   intentionalClose = false;
