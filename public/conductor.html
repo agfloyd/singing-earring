@@ -87,14 +87,15 @@
   <div class="room-code" id="roomCode"></div>
   <div class="master-display-container" style="display:flex;align-items:stretch;">
     <div class="vol-controls" id="volControls" style="display:none">
-      <div class="vol-btn" onclick="adjustVolume(5)">▲<span class="vol-key">9</span></div>
-      <div class="vol-btn" onclick="adjustVolume(-5)">▼<span class="vol-key" id="volDownKey">6</span></div>
+      <div class="vol-btn" onclick="adjustVolume(5)">▲<span class="vol-key">↑</span></div>
+      <div class="vol-btn" onclick="adjustVolume(-5)">▼<span class="vol-key">↓</span></div>
     </div>
     <div id="masterDisplayContainer" style="flex:1;"></div>
   </div>
   <div id="choirVizSection" style="margin-top:12px;">
     <div style="display:flex;align-items:center;gap:8px;">
       <div id="choirSizeLabel" style="font-size:0.85rem;color:#888;white-space:nowrap;">Choir Size: 0</div>
+      <button onclick="resetAllocation()" style="font-size:0.7rem;padding:2px 8px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;">Reset</button>
     </div>
     <div id="choirSquares" style="display:flex;margin-top:6px;"></div>
   </div>
@@ -192,6 +193,12 @@
 </div>
 
 <div id="keyboardSection" class="section" style="display:none">
+  <div style="display:flex;justify-content:center;margin-bottom:6px;">
+    <div class="toggle-switch on" id="qwertyToggle" onclick="toggleQwerty()">
+      <div class="toggle-knob"></div>
+      <span class="toggle-label">QWERTY <span class="syl-key">Tab</span></span>
+    </div>
+  </div>
   <div class="piano-wrapper">
     <div class="piano" id="piano"></div>
     <div class="range-indicators" id="rangeIndicators"></div>
@@ -316,6 +323,17 @@ function computePartRanges(parts) {
   }
 }
 
+function updatePartMidpoints() {
+  for (const part of activeParts) {
+    const partSingers = singers.filter(s => s.part === part.id && s.range);
+    if (partSingers.length > 0) {
+      const avgMid = partSingers.reduce((sum, s) => sum + (s.range[0] + s.range[1]) / 2, 0) / partSingers.length;
+      part.mid = Math.round(avgMid);
+    }
+    // If no singers, keep the default from computePartRanges()
+  }
+}
+
 function computePartColors(parts) {
   const n = parts.length;
   if (n === 1) {
@@ -372,6 +390,7 @@ let modifierShift = false;    // Shift held for sub-part I selection
 let modifierCtrl = false;     // Ctrl held for sub-part II selection
 let backspaceHeld = false;    // Backspace held (for tonic shortcut or mode toggle)
 let backspaceUsed = false;    // Whether a tonic key was pressed while backspace held
+let qwertyShortcuts = true;   // true = QWERTY row plays MIDI notes; false = number row plays scale degrees
 
 let numParts = 4;
 let activeParts = [];            // current part config array, rebuilt on numParts change
@@ -600,6 +619,7 @@ function singerCountForPart(partId) {
 
 function initParts(n) {
   numParts = Math.max(1, Math.min(12, n));
+  partLocks = {}; // Reset locks when parts change
   const oldParts = activeParts;
   activeParts = getPartConfig(numParts);
   computePartRanges(activeParts);
@@ -624,6 +644,7 @@ function initParts(n) {
   // Reassign singers to closest new parts
   if (oldParts.length > 0 && singers.length > 0) {
     reassignSingers();
+    updatePartMidpoints();
   }
 
   // Update input
@@ -647,31 +668,96 @@ function setNumParts(n) {
   initParts(n);
 }
 
+let partLocks = {}; // {partId: lockedCount|null}
+
 function reassignSingers() {
-  // Map each singer to the closest new part by range midpoint
-  for (const singer of singers) {
-    if (singer.range) {
-      // Use singer's personal range to find closest part
-      const singerMid = (singer.range[0] + singer.range[1]) / 2;
-      let bestPart = activeParts[0];
-      let bestDist = Infinity;
-      for (const part of activeParts) {
-        const dist = Math.abs(singerMid - part.mid);
-        if (dist < bestDist) { bestDist = dist; bestPart = part; }
-      }
-      singer.part = bestPart.id;
-    } else {
-      // No personal range: map by old part's approximate position
-      // Just assign to closest part by name similarity or default
-      const oldPart = singer.part;
-      let matched = activeParts.find(p => p.id === oldPart);
-      if (!matched) {
-        // Try base name match (e.g. 'soprano' matches 'soprano1', 'soprano2')
-        matched = activeParts.find(p => p.id.startsWith(oldPart) || oldPart.startsWith(p.id));
-      }
-      singer.part = matched ? matched.id : activeParts[Math.floor(activeParts.length / 2)].id;
+  reassignSingersWithLocks();
+}
+
+function reassignSingersWithLocks() {
+  const assigned = new Set();
+
+  // 1. Handle locked parts first: assign closest N singers
+  for (const part of activeParts) {
+    const locked = partLocks[part.id];
+    if (locked == null) continue;
+    // Find all unassigned singers, sorted by distance to this part
+    const available = singers.filter(s => !assigned.has(s.id));
+    available.sort((a, b) => {
+      const aMid = a.range ? (a.range[0] + a.range[1]) / 2 : part.mid;
+      const bMid = b.range ? (b.range[0] + b.range[1]) / 2 : part.mid;
+      return Math.abs(aMid - part.mid) - Math.abs(bMid - part.mid);
+    });
+    const count = Math.min(locked, available.length);
+    for (let i = 0; i < count; i++) {
+      available[i].part = part.id;
+      assigned.add(available[i].id);
     }
   }
+
+  // 2. Assign remaining singers to unlocked parts using cost function
+  const remaining = singers.filter(s => !assigned.has(s.id));
+  const unlockedParts = activeParts.filter(p => partLocks[p.id] == null);
+
+  for (const singer of remaining) {
+    if (singer.range && unlockedParts.length > 0) {
+      const singerMid = (singer.range[0] + singer.range[1]) / 2;
+      let bestPart = unlockedParts[0];
+      let bestScore = Infinity;
+      for (const part of unlockedParts) {
+        // Cost: midpoint distance + range overlap penalty
+        let score = Math.abs(singerMid - part.mid);
+        const overlap = Math.min(singer.range[1], part.range[1]) - Math.max(singer.range[0], part.range[0]);
+        const singerSpan = singer.range[1] - singer.range[0];
+        if (overlap < singerSpan) score += (singerSpan - overlap) * 0.5;
+        if (score < bestScore) { bestScore = score; bestPart = part; }
+      }
+      singer.part = bestPart.id;
+    } else if (unlockedParts.length > 0) {
+      // No range: try name match, then default to middle part
+      const oldPart = singer.part;
+      let matched = unlockedParts.find(p => p.id === oldPart);
+      if (!matched) matched = unlockedParts.find(p => p.id.startsWith(oldPart) || oldPart.startsWith(p.id));
+      singer.part = matched ? matched.id : unlockedParts[Math.floor(unlockedParts.length / 2)].id;
+    } else if (activeParts.length > 0) {
+      singer.part = activeParts[0].id;
+    }
+  }
+}
+
+function togglePartLock(partId) {
+  if (partLocks[partId] != null) {
+    partLocks[partId] = null;
+  } else {
+    // Lock to current count
+    partLocks[partId] = singers.filter(s => s.part === partId).length;
+  }
+  applyLocks();
+}
+
+function changeLockedCount(partId, delta) {
+  if (partLocks[partId] == null) return;
+  partLocks[partId] = Math.max(0, Math.min(singers.length, partLocks[partId] + delta));
+  applyLocks();
+}
+
+function applyLocks() {
+  reassignSingersWithLocks();
+  updatePartMidpoints();
+  buildMasterDisplay();
+  updateChoirViz();
+  updateDisplay();
+  sendPartConfig();
+}
+
+function resetAllocation() {
+  partLocks = {};
+  reassignSingers();
+  updatePartMidpoints();
+  buildMasterDisplay();
+  updateChoirViz();
+  updateDisplay();
+  sendPartConfig();
 }
 
 function sendPartConfig() {
@@ -775,11 +861,48 @@ function createPartColumn(part) {
   note.textContent = '';
   col.appendChild(note);
 
-  // Singer count (at the bottom)
-  const count = document.createElement('div');
-  count.className = 'part-count';
-  count.textContent = '0';
-  col.appendChild(count);
+  // Singer count with lock toggle (at the bottom)
+  const countRow = document.createElement('div');
+  countRow.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:3px;margin-top:auto;';
+
+  const isLocked = partLocks[part.id] != null;
+  if (isLocked) {
+    // Editable count with ± buttons
+    const minus = document.createElement('button');
+    minus.textContent = '−';
+    minus.style.cssText = 'font-size:0.65rem;padding:0 3px;background:#333;border:1px solid #555;border-radius:3px;color:#ccc;cursor:pointer;line-height:1;';
+    minus.onclick = () => changeLockedCount(part.id, -1);
+    countRow.appendChild(minus);
+
+    const countInput = document.createElement('input');
+    countInput.type = 'number';
+    countInput.className = 'part-count';
+    countInput.value = partLocks[part.id];
+    countInput.min = 0;
+    countInput.max = singers.length;
+    countInput.style.cssText = 'width:28px;text-align:center;font-size:0.85rem;background:#1a1a2e;border:1px solid #555;border-radius:3px;color:inherit;padding:1px;';
+    countInput.onchange = (e) => { partLocks[part.id] = Math.max(0, Math.min(singers.length, parseInt(e.target.value) || 0)); applyLocks(); };
+    countRow.appendChild(countInput);
+
+    const plus = document.createElement('button');
+    plus.textContent = '+';
+    plus.style.cssText = 'font-size:0.65rem;padding:0 3px;background:#333;border:1px solid #555;border-radius:3px;color:#ccc;cursor:pointer;line-height:1;';
+    plus.onclick = () => changeLockedCount(part.id, 1);
+    countRow.appendChild(plus);
+  } else {
+    const count = document.createElement('div');
+    count.className = 'part-count';
+    count.textContent = '0';
+    countRow.appendChild(count);
+  }
+
+  const lockBtn = document.createElement('button');
+  lockBtn.textContent = isLocked ? '🔒' : '🔓';
+  lockBtn.style.cssText = 'font-size:0.6rem;padding:1px 3px;background:transparent;border:1px solid #555;border-radius:3px;color:#888;cursor:pointer;line-height:1;';
+  lockBtn.onclick = () => togglePartLock(part.id);
+  countRow.appendChild(lockBtn);
+
+  col.appendChild(countRow);
 
   // Volume bar
   const volWrap = document.createElement('div');
@@ -1126,8 +1249,6 @@ function toggleAutoVoicing() {
   document.getElementById('autoVoicingControls').style.display = autoVoicing ? '' : 'none';
   const el = document.getElementById('modeToggle');
   el.classList.toggle('on', autoVoicing);
-  // Update volume key labels
-  document.getElementById('volDownKey').textContent = autoVoicing ? '8' : '6';
   // Clear state when switching
   currentChord = null;
   previousVoicing = null;
@@ -1137,6 +1258,13 @@ function toggleAutoVoicing() {
   updateDisplay();
   updateChordDisplay();
   updateStaffDisplay();
+  updatePianoLabels();
+}
+
+function toggleQwerty() {
+  qwertyShortcuts = !qwertyShortcuts;
+  const el = document.getElementById('qwertyToggle');
+  if (el) el.classList.toggle('on', qwertyShortcuts);
   updatePianoLabels();
 }
 
@@ -1155,13 +1283,15 @@ function getChordQuality(pitchClass) {
 
 function selectScaleDegree(degree) {
   const scale = SCALE_DEGREES[selectedKey.mode];
-  const entry = scale[degree - 1];
+  // Degrees 8 and 9 = degrees 1 and 2 with bass an octave higher
+  const bassDegree = degree > 7 ? degree - 7 : degree;
+  const entry = scale[bassDegree - 1];
   const root = (selectedKey.tonic + entry.interval) % 12;
   let quality = entry.quality;
   if (chordModifiers.dim) quality = 'dim';
   else if (chordModifiers.min) quality = 'minor';
   else if (chordModifiers.maj) quality = 'major';
-  setChord({ root, quality });
+  setChord({ root, quality, bassOctaveUp: degree > 7 });
 }
 
 function setChord(chord) {
@@ -1174,171 +1304,212 @@ function setChord(chord) {
   updateStaffDisplay();
 }
 
+// Select chord by absolute note letter (A-G), always major unless modified
+function selectNoteChord(noteName) {
+  const NOTE_TO_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  const root = NOTE_TO_PC[noteName];
+  if (root === undefined) return;
+  let quality = 'major';
+  if (chordModifiers.dim) quality = 'dim';
+  else if (chordModifiers.min) quality = 'minor';
+  else if (chordModifiers.maj) quality = 'major';
+  setChord({ root, quality });
+}
+
 function generateVoicing(chord) {
   const intervals = CHORD_INTERVALS[chord.quality] || CHORD_INTERVALS.major;
   const chordTones = intervals.map(i => (chord.root + i) % 12);
 
-  // Assign pitch classes to each voice
-  const voicePitchClasses = assignPitchClasses(chordTones, chord.root);
-
-  // Generate all valid MIDI notes per part
-  const candidates = [];
-  for (const part of activeParts) {
-    const pc = voicePitchClasses[part.id];
-    const [lo, hi] = part.range;
-    const validNotes = [];
-    for (let midi = lo; midi <= hi; midi++) {
-      if (midi % 12 === pc) validNotes.push(midi);
-    }
-    candidates.push(validNotes);
-  }
-
-  // Beam search to find best voicing across all parts
-  // Each state: { notes: {partId: midi}, score: number }
+  // Try all pitch class assignments and pick the overall best voicing
+  const allAssignments = getAllPitchClassAssignments(chordTones, chord.root);
   const BEAM_WIDTH = 30;
-  let beam = [{ notes: {}, score: 0, lastNote: -Infinity }];
+  let globalBest = null;
 
-  for (let i = 0; i < activeParts.length; i++) {
-    const part = activeParts[i];
-    const nextBeam = [];
-
-    for (const state of beam) {
-      if (candidates[i].length === 0) {
-        // No valid note for this part
-        const newState = {
-          notes: { ...state.notes, [part.id]: -1 },
-          score: state.score + 100, // penalty for missing voice
-          lastNote: state.lastNote
-        };
-        nextBeam.push(newState);
-        continue;
+  for (const voicePitchClasses of allAssignments) {
+    // Generate all valid MIDI notes per part for this assignment
+    const candidates = [];
+    for (let idx = 0; idx < activeParts.length; idx++) {
+      const part = activeParts[idx];
+      const pc = voicePitchClasses[part.id];
+      if (pc === undefined) { candidates.push([]); continue; }
+      let [lo, hi] = part.range;
+      const validNotes = [];
+      if (chord.bassOctaveUp && idx === 0 && activeParts.length > 1) {
+        // Find what the normal bass note would be (closest to midpoint), then go an octave up
+        const normalCandidates = [];
+        for (let midi = lo; midi <= hi; midi++) {
+          if (midi % 12 === pc) normalCandidates.push(midi);
+        }
+        let normalBass = normalCandidates[0] || lo;
+        let bestDist = Math.abs(normalBass - part.mid);
+        for (const n of normalCandidates) {
+          const d = Math.abs(n - part.mid);
+          if (d < bestDist) { bestDist = d; normalBass = n; }
+        }
+        // Only allow notes at normalBass+12 or higher
+        const minMidi = normalBass + 12;
+        const extHi = Math.max(hi, minMidi + 12);
+        for (let midi = minMidi; midi <= extHi; midi++) {
+          if (midi % 12 === pc) validNotes.push(midi);
+        }
+      } else {
+        for (let midi = lo; midi <= hi; midi++) {
+          if (midi % 12 === pc) validNotes.push(midi);
+        }
       }
+      candidates.push(validNotes);
+    }
 
-      for (const note of candidates[i]) {
-        // Voice crossing check: must be at or above previous voice
-        if (i > 0 && note < state.lastNote) continue;
-        // Max spacing check between adjacent voices
-        if (i > 0 && state.lastNote > 0 && note - state.lastNote > 19) continue;
+    // Beam search for this assignment
+    let beam = [{ notes: {}, score: 0, lastNote: -Infinity }];
 
-        let score = state.score;
+    for (let i = 0; i < activeParts.length; i++) {
+      const part = activeParts[i];
+      const nextBeam = [];
 
-        // Unison penalty (same note as adjacent voice below)
-        if (i > 0 && note === state.lastNote) score += 10;
-
-        // Voice leading cost
-        if (previousVoicing && previousVoicing[part.id] >= 0) {
-          score += Math.abs(note - previousVoicing[part.id]) * 2;
-          // Common tone bonus
-          if (note === previousVoicing[part.id]) score -= 3;
+      for (const state of beam) {
+        if (candidates[i].length === 0) {
+          nextBeam.push({
+            notes: { ...state.notes, [part.id]: -1 },
+            score: state.score + 100,
+            lastNote: state.lastNote
+          });
+          continue;
         }
 
-        // Spacing cost for upper voices (prefer close)
-        if (i > 0 && state.lastNote > 0) {
-          score += (note - state.lastNote) * 0.3;
-        }
+        for (const note of candidates[i]) {
+          if (i > 0 && note < state.lastNote) continue;
+          if (i > 0 && state.lastNote > 0 && note - state.lastNote > 19) continue;
 
-        // Range midpoint proximity
-        score += Math.abs(note - part.mid) * 0.1;
+          let score = state.score;
+          if (i > 0 && note === state.lastNote) score += 10;
 
-        // Parallel 5ths/octaves penalty with ALL previously assigned voices
-        if (previousVoicing) {
-          for (let j = 0; j < i; j++) {
-            const pj = activeParts[j];
-            const prevJ = previousVoicing[pj.id];
-            const prevI = previousVoicing[part.id];
-            const newJ = state.notes[pj.id];
-            if (prevJ >= 0 && prevI >= 0 && newJ >= 0) {
-              const prevInt = Math.abs(prevI - prevJ) % 12;
-              const newInt = Math.abs(note - newJ) % 12;
-              const bothMoved = prevJ !== newJ && prevI !== note;
-              const dir1 = Math.sign(newJ - prevJ);
-              const dir2 = Math.sign(note - prevI);
-              if (bothMoved && dir1 === dir2 && (newInt === 7 || newInt === 0) && prevInt === newInt) {
-                score += 50;
+          if (previousVoicing && previousVoicing[part.id] >= 0) {
+            score += Math.abs(note - previousVoicing[part.id]) * 2;
+            if (note === previousVoicing[part.id]) score -= 3;
+          }
+
+          if (i > 0 && state.lastNote > 0) {
+            score += (note - state.lastNote) * 0.3;
+          }
+
+          score += Math.abs(note - part.mid) * 0.1;
+
+          if (previousVoicing) {
+            for (let j = 0; j < i; j++) {
+              const pj = activeParts[j];
+              const prevJ = previousVoicing[pj.id];
+              const prevI = previousVoicing[part.id];
+              const newJ = state.notes[pj.id];
+              if (prevJ >= 0 && prevI >= 0 && newJ >= 0) {
+                const prevInt = Math.abs(prevI - prevJ) % 12;
+                const newInt = Math.abs(note - newJ) % 12;
+                const bothMoved = prevJ !== newJ && prevI !== note;
+                const dir1 = Math.sign(newJ - prevJ);
+                const dir2 = Math.sign(note - prevI);
+                if (bothMoved && dir1 === dir2 && (newInt === 7 || newInt === 0) && prevInt === newInt) {
+                  score += 50;
+                }
               }
             }
           }
-        }
 
-        nextBeam.push({
-          notes: { ...state.notes, [part.id]: note },
-          score,
-          lastNote: note
-        });
+          nextBeam.push({
+            notes: { ...state.notes, [part.id]: note },
+            score,
+            lastNote: note
+          });
+        }
       }
+
+      nextBeam.sort((a, b) => a.score - b.score);
+      beam = nextBeam.slice(0, BEAM_WIDTH);
+      if (beam.length === 0) break;
     }
 
-    // Prune beam
-    nextBeam.sort((a, b) => a.score - b.score);
-    beam = nextBeam.slice(0, BEAM_WIDTH);
-
-    if (beam.length === 0) break;
+    if (beam.length > 0 && (!globalBest || beam[0].score < globalBest.score)) {
+      globalBest = beam[0];
+    }
   }
 
-  if (beam.length > 0) {
-    const best = beam[0];
+  if (globalBest) {
     for (const part of activeParts) {
-      partNotes[part.id] = best.notes[part.id] !== undefined ? best.notes[part.id] : -1;
+      partNotes[part.id] = globalBest.notes[part.id] !== undefined ? globalBest.notes[part.id] : -1;
     }
   } else {
-    // Fallback: assign each part the candidate closest to its midpoint
-    for (let i = 0; i < activeParts.length; i++) {
-      const part = activeParts[i];
-      if (candidates[i].length > 0) {
-        let best = candidates[i][0], bestDist = Math.abs(best - part.mid);
-        for (const n of candidates[i]) {
-          const d = Math.abs(n - part.mid);
-          if (d < bestDist) { bestDist = d; best = n; }
-        }
-        partNotes[part.id] = best;
-      } else {
-        partNotes[part.id] = -1;
-      }
+    // Fallback: assign each part its midpoint-closest note
+    for (const part of activeParts) {
+      partNotes[part.id] = -1;
     }
   }
 }
 
-function assignPitchClasses(chordTones, root) {
-  const result = {};
+function getDistinctPermutations(arr) {
+  if (arr.length <= 1) return [arr];
+  const result = [];
+  const used = new Set();
+  for (let i = 0; i < arr.length; i++) {
+    const key = arr[i];
+    if (used.has(key)) continue;
+    used.add(key);
+    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+    for (const perm of getDistinctPermutations(rest)) {
+      result.push([arr[i], ...perm]);
+    }
+  }
+  return result;
+}
+
+function getAllPitchClassAssignments(chordTones, root) {
   const n = activeParts.length;
+  if (n === 0) return [{}];
 
-  if (n === 0) return result;
-
-  // Build pool of pitch classes: chord tones + doublings
-  // Priority for doubling: root, then 5th, then 3rd
+  // Build pool of pitch classes with doublings
   const tones = [...chordTones];
   while (tones.length < n) {
-    if (tones.length === chordTones.length) tones.push(root); // double root first
-    else if (chordTones.length >= 3) tones.push(chordTones[2]); // double 5th
-    else tones.push(root); // fallback: more roots
+    if (tones.length === chordTones.length) tones.push(root);
+    else if (chordTones.length >= 3) tones.push(chordTones[2]);
+    else tones.push(root);
   }
 
-  // Sort parts by range (low to high)
   const sortedParts = [...activeParts].sort((a, b) => a.mid - b.mid);
+  const assignments = [];
 
   if (rootInBass && n > 1) {
-    // Bass always gets root
-    result[sortedParts[0].id] = root;
-    // Remove one root from tones pool
-    const rootIdx = tones.indexOf(root);
+    // Bass always gets root; permute remaining tones across upper voices
     const remainingTones = [...tones];
+    const rootIdx = remainingTones.indexOf(root);
     if (rootIdx >= 0) remainingTones.splice(rootIdx, 1);
-    // Ensure enough tones for remaining voices
     while (remainingTones.length < n - 1) remainingTones.push(root);
-    // Sort remaining tones and assign to remaining voices
-    remainingTones.sort((a, b) => a - b);
-    for (let i = 1; i < n; i++) {
-      result[sortedParts[i].id] = remainingTones[(i - 1) % remainingTones.length];
+    // Trim to exactly n-1
+    const upper = remainingTones.slice(0, n - 1);
+
+    const perms = getDistinctPermutations(upper);
+    // Cap at 120 permutations for performance
+    const maxPerms = perms.slice(0, 120);
+    for (const perm of maxPerms) {
+      const result = {};
+      result[sortedParts[0].id] = root;
+      for (let i = 0; i < perm.length; i++) {
+        result[sortedParts[i + 1].id] = perm[i];
+      }
+      assignments.push(result);
     }
   } else {
-    // No root-in-bass constraint: distribute evenly
-    tones.sort((a, b) => a - b);
-    for (let i = 0; i < n; i++) {
-      result[sortedParts[i].id] = tones[i % tones.length];
+    // No root-in-bass: permute all tones
+    const pool = tones.slice(0, n);
+    const perms = getDistinctPermutations(pool);
+    const maxPerms = perms.slice(0, 120);
+    for (const perm of maxPerms) {
+      const result = {};
+      for (let i = 0; i < n; i++) {
+        result[sortedParts[i].id] = perm[i];
+      }
+      assignments.push(result);
     }
   }
 
-  return result;
+  return assignments.length > 0 ? assignments : [{}];
 }
 
 function updateChordDisplay() {
@@ -1472,19 +1643,27 @@ function midiToStaffY(midi, staffTop, lineGap) {
 
 function updatePianoLabels() {
   const keys = document.querySelectorAll('.key');
-  if (autoVoicing) {
+  if (!qwertyShortcuts) {
+    // Scale degree mode: show 1-9 (no looping), starting at lowest tonic
     const scale = SCALE_DEGREES[selectedKey.mode];
-    const pcToDegree = {};
-    for (let d = 0; d < 7; d++) {
-      const pc = (selectedKey.tonic + scale[d].interval) % 12;
-      pcToDegree[pc] = d + 1;
+    // Find the lowest tonic MIDI on the piano
+    const allMidis = [...keys].map(k => parseInt(k.dataset.midi)).sort((a, b) => a - b);
+    const lowestMidi = allMidis[0] || 48;
+    let baseTonic = lowestMidi;
+    while (baseTonic % 12 !== selectedKey.tonic) baseTonic++;
+    // Map MIDI note → degree label (1-9), each appearing exactly once
+    const midiToDegree = {};
+    for (let d = 0; d < 9; d++) {
+      const actualDegree = d < 7 ? d : d - 7; // 8=1, 9=2
+      const interval = scale[actualDegree].interval;
+      const midi = baseTonic + interval + (d >= 7 ? 12 : 0);
+      if (!midiToDegree[midi]) midiToDegree[midi] = d + 1;
     }
     keys.forEach(k => {
       const midi = parseInt(k.dataset.midi);
-      const pc = midi % 12;
       const bindEl = k.querySelector('.keybind');
       if (bindEl) {
-        bindEl.textContent = pcToDegree[pc] !== undefined ? pcToDegree[pc] : '';
+        bindEl.textContent = midiToDegree[midi] !== undefined ? midiToDegree[midi] : '';
       }
     });
   } else {
@@ -1589,6 +1768,8 @@ function createRoom() {
       updateIndicators();
     } else if (msg.t === 'r') {
       singers = msg.singers || [];
+      updatePartMidpoints();
+      if (autoVoicing && currentChord) generateVoicing(currentChord);
       // Update counts in part columns
       const counts = {};
       for (const part of activeParts) counts[part.id] = 0;
@@ -1930,6 +2111,9 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
+  // Tab: toggle QWERTY shortcuts
+  if (e.code === 'Tab') { e.preventDefault(); toggleQwerty(); return; }
+
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
   // Backspace/Delete: hold for tonic shortcut, tap for mode toggle
@@ -1953,21 +2137,28 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
-  if (e.repeat && !autoVoicing) return;
+  if (e.repeat && qwertyShortcuts) return;
 
-  // Syllable keys (use e.code to avoid dead-key composition with ' modifier)
-  if (e.code === 'KeyA') { e.preventDefault(); setSyllable(0); return; }
-  if (e.code === 'KeyM') { e.preventDefault(); setSyllable(1); return; }
-  if (e.code === 'KeyG') { e.preventDefault(); setSyllable(2); return; }
-  if (e.code === 'KeyB') { e.preventDefault(); setSyllable(3); return; }
-  if (e.code === 'KeyS') { e.preventDefault(); setSyllable(4); return; }
+  // Syllable keys — only when QWERTY mode is on (A/G/B are chord selectors when QWERTY off)
+  if (qwertyShortcuts) {
+    if (e.code === 'KeyA') { e.preventDefault(); setSyllable(0); return; }
+    if (e.code === 'KeyM') { e.preventDefault(); setSyllable(1); return; }
+    if (e.code === 'KeyG') { e.preventDefault(); setSyllable(2); return; }
+    if (e.code === 'KeyB') { e.preventDefault(); setSyllable(3); return; }
+    if (e.code === 'KeyS') { e.preventDefault(); setSyllable(4); return; }
+  }
 
   // BPM and sustain
   if (e.key === ',') { e.preventDefault(); startBpmHold(-5); return; }
   if (e.key === '.') { e.preventDefault(); startBpmHold(5); return; }
   if (e.key === ' ') { e.preventDefault(); toggleSustain(); return; }
 
-  if (autoVoicing) {
+  // Volume — always ArrowUp/ArrowDown
+  if (e.code === 'ArrowUp') { e.preventDefault(); startVolHold(1); return; }
+  if (e.code === 'ArrowDown') { e.preventDefault(); startVolHold(-1); return; }
+
+  if (!qwertyShortcuts) {
+    // Scale degree mode: number keys select scale degrees, letter keys select chords/notes
     if (e.code === 'Digit1') { e.preventDefault(); selectScaleDegree(1); return; }
     if (e.code === 'Digit2') { e.preventDefault(); selectScaleDegree(2); return; }
     if (e.code === 'Digit3') { e.preventDefault(); selectScaleDegree(3); return; }
@@ -1975,27 +2166,46 @@ document.addEventListener('keydown', (e) => {
     if (e.code === 'Digit5') { e.preventDefault(); selectScaleDegree(5); return; }
     if (e.code === 'Digit6') { e.preventDefault(); selectScaleDegree(6); return; }
     if (e.code === 'Digit7') { e.preventDefault(); selectScaleDegree(7); return; }
-    if (e.code === 'Digit8') { e.preventDefault(); startVolHold(-1); return; }
-    if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
+    if (e.code === 'Digit8') { e.preventDefault(); selectScaleDegree(8); return; }
+    if (e.code === 'Digit9') { e.preventDefault(); selectScaleDegree(9); return; }
     if (e.code === 'Digit0') { e.preventDefault(); chordModifiers.dim = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Minus') { e.preventDefault(); chordModifiers.min = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Equal') { e.preventDefault(); chordModifiers.maj = true; updateChordDisplay(); updateStaffDisplay(); return; }
-  } else {
-    if (e.code === 'Digit9') { e.preventDefault(); startVolHold(1); return; }
-    if (e.code === 'Digit6') { e.preventDefault(); startVolHold(-1); return; }
+
+    // Letter keys A-G: select chord by note name (auto-voicing) or note (manual)
+    const NOTE_CODES = { KeyC: 'C', KeyD: 'D', KeyE: 'E', KeyF: 'F', KeyG: 'G', KeyA: 'A', KeyB: 'B' };
+    if (NOTE_CODES[e.code]) {
+      e.preventDefault();
+      if (autoVoicing) {
+        selectNoteChord(NOTE_CODES[e.code]);
+      } else {
+        // In manual mode, play the MIDI note for that letter in octave 4
+        const NOTE_TO_MIDI = { C: 60, D: 62, E: 64, F: 65, G: 67, A: 69, B: 71 };
+        const midi = NOTE_TO_MIDI[NOTE_CODES[e.code]];
+        if (sustainMode) {
+          noteOn(midi);
+        } else if (!heldKeyboard.has(e.code)) {
+          heldKeyboard.add(e.code);
+          noteOn(midi);
+        }
+      }
+      return;
+    }
   }
 
-  // Note keys
-  const key = e.key.toLowerCase();
-  const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];
-  if (midi !== undefined) {
-    if (autoVoicing || sustainMode) {
-      e.preventDefault();
-      noteOn(midi);
-    } else if (!heldKeyboard.has(e.code)) {
-      e.preventDefault();
-      heldKeyboard.add(e.code);
-      noteOn(midi);
+  if (qwertyShortcuts) {
+    // QWERTY mode: keyboard layout plays MIDI notes
+    const key = e.key.toLowerCase();
+    const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];
+    if (midi !== undefined) {
+      if (autoVoicing || sustainMode) {
+        e.preventDefault();
+        noteOn(midi);
+      } else if (!heldKeyboard.has(e.code)) {
+        e.preventDefault();
+        heldKeyboard.add(e.code);
+        noteOn(midi);
+      }
     }
   }
 });
@@ -2020,12 +2230,15 @@ document.addEventListener('keyup', (e) => {
     return;
   }
 
-  if (autoVoicing) {
-    if (e.code === 'Digit8' || e.code === 'Digit9') { stopVolHold(); return; }
+  // Volume keyup — always arrow keys
+  if (e.code === 'ArrowUp' || e.code === 'ArrowDown') { stopVolHold(); return; }
+
+  if (!qwertyShortcuts) {
+    // Scale degree mode keyup
     if (e.code === 'Digit0') { chordModifiers.dim = false; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Minus') { chordModifiers.min = false; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Equal') { chordModifiers.maj = false; updateChordDisplay(); updateStaffDisplay(); return; }
-    if (!sustainMode && /^Digit[1-7]$/.test(e.code)) {
+    if (!sustainMode && /^Digit[1-9]$/.test(e.code)) {
       for (const pid of getPartIds()) partNotes[pid] = -1;
       currentChord = null;
       updateDisplay();
@@ -2033,17 +2246,34 @@ document.addEventListener('keyup', (e) => {
       updateStaffDisplay();
       return;
     }
-  } else {
-    if (e.code === 'Digit9' || e.code === 'Digit6') { stopVolHold(); return; }
+    // Letter key chord/note release
+    const NOTE_CODES_UP = { KeyC: 'C', KeyD: 'D', KeyE: 'E', KeyF: 'F', KeyG: 'G', KeyA: 'A', KeyB: 'B' };
+    if (NOTE_CODES_UP[e.code]) {
+      if (autoVoicing && !sustainMode) {
+        for (const pid of getPartIds()) partNotes[pid] = -1;
+        currentChord = null;
+        updateDisplay();
+        updateChordDisplay();
+        updateStaffDisplay();
+      } else {
+        heldKeyboard.delete(e.code);
+        const NOTE_TO_MIDI_UP = { C: 60, D: 62, E: 64, F: 65, G: 67, A: 69, B: 71 };
+        noteOff(NOTE_TO_MIDI_UP[NOTE_CODES_UP[e.code]]);
+      }
+      return;
+    }
   }
+
   if (e.key === ',') { stopBpmHold(true, -5); return; }
   if (e.key === '.') { stopBpmHold(true, 5); return; }
 
-  const key = e.key.toLowerCase();
-  const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];
-  if (midi !== undefined) {
-    heldKeyboard.delete(e.code);
-    noteOff(midi);
+  if (qwertyShortcuts) {
+    const key = e.key.toLowerCase();
+    const midi = KEY_TO_MIDI[key] !== undefined ? KEY_TO_MIDI[key] : KEY_TO_MIDI[CODE_TO_KEY[e.code]];
+    if (midi !== undefined) {
+      heldKeyboard.delete(e.code);
+      noteOff(midi);
+    }
   }
 });
 
