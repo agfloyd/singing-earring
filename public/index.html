@@ -103,6 +103,8 @@
 
   <input type="text" class="code-input" id="codeInput" placeholder="Room code" maxlength="4" autocomplete="off" autocapitalize="characters">
 
+  <input type="text" id="nameInput" placeholder="Your name (optional)" autocomplete="off" style="background:#16213e;border:1px solid #0f3460;color:#eee;padding:8px 12px;border-radius:8px;width:100%;font-size:0.95rem;margin-top:12px;outline:none;text-align:center;" onfocus="this.style.borderColor='#e94560'" onblur="this.style.borderColor='#0f3460'">
+
   <div class="range-row">
     Range:
     <input type="text" class="range-field" id="rangeLow" placeholder="—" readonly onclick="openRangePicker('low')" ondblclick="makeRangeEditable(this)" autocomplete="off">
@@ -170,6 +172,7 @@
   <div class="singer-counts" id="singerCounts"></div>
   <div class="conn-status connected" id="connStatus">Connected</div>
   <div class="room-info" id="roomInfo"></div>
+  <div id="singerName" style="font-size:0.75rem;color:#555;margin-top:4px;"></div>
 </div>
 
 
@@ -934,7 +937,8 @@ function connectWebSocket(code, isReconnect) {
     const part = selectedPart || classifyRange(customRange.low, customRange.high) || (dynamicParts ? dynamicParts[0].id : 'soprano');
     const range = (customRange.low !== null && customRange.high !== null)
       ? [customRange.low, customRange.high] : (RANGE[part] || [48, 72]);
-    ws.send(JSON.stringify({ t: 'join', code, part, range }));
+    const singerName = (document.getElementById('nameInput')?.value || '').trim();
+    ws.send(JSON.stringify({ t: 'join', code, part, range, name: singerName || undefined }));
   };
 
   ws.onmessage = (e) => {
@@ -948,6 +952,7 @@ function connectWebSocket(code, isReconnect) {
       updatePartDisplay();
       buildMiniPiano();
       document.getElementById('roomInfo').textContent = `Room: ${msg.code}`;
+      if (msg.name) document.getElementById('singerName').textContent = msg.name;
       document.getElementById('connStatus').textContent = isReconnect ? 'Reconnected' : 'Connected';
       document.getElementById('connStatus').className = 'conn-status connected';
       requestWakeLock();

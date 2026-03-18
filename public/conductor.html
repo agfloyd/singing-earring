@@ -55,7 +55,7 @@
   /* Choir visualization squares: 49 squares, gap = 50% of square width.
      With 49 squares and 48 gaps: totalWidth = 49*s + 48*(0.5*s) = 73*s → s = 100%/73 */
   #choirSquares { gap: calc(100% / 146); /* 0.5s = 100%/146 */ }
-  .choir-sq { flex: 0 0 calc(100% / 73); aspect-ratio: 1; background: rgba(255,255,255,0.1); border-radius: 1px; transition: background 0.3s, box-shadow 0.3s; cursor: default; }
+  .choir-sq { flex: 0 0 calc(100% / 73); height: 6px; background: rgba(255,255,255,0.1); border-radius: 1px; transition: background 0.3s, box-shadow 0.3s; cursor: default; }
   .syl-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: #222; cursor: pointer; font-size: 1.8rem; color: #888; transition: all 0.15s; border: 2px solid transparent; }
   .syl-btn.active { background: #e94560; color: white; border-color: #e94560; }
   .syl-key { font-size: 1.8rem; color: rgba(255,255,255,0.35); }
@@ -1737,28 +1737,39 @@ function updateChoirViz() {
   const squares = document.querySelectorAll('.choir-sq');
   if (!squares.length) return;
 
-  // Reset all squares to base faint state
+  // Reset all squares to base faint state and default tooltip
   squares.forEach(sq => {
     sq.style.background = 'rgba(255,255,255,0.1)';
     sq.style.boxShadow = 'none';
+    sq.title = midiToLabel(parseInt(sq.dataset.midi));
   });
 
   if (singers.length === 0) return;
 
-  // Build per-square color accumulation
-  // For each singer, light up the squares in their range with their part color
+  // Build per-square color accumulation and singer info for tooltips
   const squareColors = {}; // midi -> [{r,g,b,alpha}]
+  const squareSingers = {}; // midi -> [{name, range, partLabel}] for midpoint squares
   for (const singer of singers) {
     const part = getPartById(singer.part);
     if (!part) continue;
     const sRange = singer.range || part.range;
     const lo = sRange[0], hi = sRange[1];
     const mid = (lo + hi) / 2;
+    const midMidi = Math.round(mid);
     const rgb = parseColor(part.color);
+
+    // Track singer at their midpoint square for tooltip
+    if (midMidi >= VIZ_LO && midMidi <= VIZ_HI) {
+      if (!squareSingers[midMidi]) squareSingers[midMidi] = [];
+      squareSingers[midMidi].push({
+        name: singer.name || singer.id,
+        range: midiToLabel(lo) + '–' + midiToLabel(hi),
+        partLabel: part.label
+      });
+    }
 
     for (let midi = Math.max(lo, VIZ_LO); midi <= Math.min(hi, VIZ_HI); midi++) {
       if (!squareColors[midi]) squareColors[midi] = [];
-      // Gaussian falloff from midpoint
       const dist = Math.abs(midi - mid);
       const halfRange = Math.max((hi - lo) / 2, 1);
       const t = dist / halfRange;
@@ -1767,9 +1778,20 @@ function updateChoirViz() {
     }
   }
 
-  // Apply accumulated colors to squares
+  // Apply accumulated colors and tooltips to squares
   squares.forEach(sq => {
     const midi = parseInt(sq.dataset.midi);
+
+    // Build tooltip
+    const singerInfos = squareSingers[midi];
+    if (singerInfos && singerInfos.length > 0) {
+      const lines = [midiToLabel(midi)];
+      for (const s of singerInfos) {
+        lines.push(`${s.name} (${s.partLabel}) ${s.range}`);
+      }
+      sq.title = lines.join('\n');
+    }
+
     const colors = squareColors[midi];
     if (!colors || colors.length === 0) return;
 

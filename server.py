@@ -36,8 +36,35 @@ def generate_code():
             return code
 
 
+PART_DISPLAY_NAMES = {
+    "soprano": "Soprano", "alto": "Alto", "tenor": "Tenor", "bass": "Bass",
+    "treble": "Treble", "baritone": "Baritone", "mezzo": "Mezzo-Soprano",
+    "soprano1": "Soprano I", "soprano2": "Soprano II",
+    "alto1": "Alto I", "alto2": "Alto II",
+    "tenor1": "Tenor I", "tenor2": "Tenor II",
+    "bass1": "Bass I", "bass2": "Bass II",
+    "baritone1": "Baritone I", "baritone2": "Baritone II",
+    "mezzo1": "Mezzo I", "mezzo2": "Mezzo II",
+}
+
+
+def auto_assign_name(room, part):
+    """Generate a name like 'Alto #2' based on how many unnamed singers share this part category."""
+    # Get base part name (strip trailing digits for sub-parts)
+    base = part.rstrip("0123456789")
+    display = PART_DISPLAY_NAMES.get(part, PART_DISPLAY_NAMES.get(base, part.capitalize()))
+    # Count existing unnamed singers with the same base part
+    count = 0
+    for info in room["singers"].values():
+        if not info.get("custom_name"):
+            singer_base = info["part"].rstrip("0123456789")
+            if singer_base == base:
+                count += 1
+    return f"{display} #{count + 1}"
+
+
 def broadcast_room_state(room, code):
-    singer_list = [{"id": info["id"], "part": info["part"], "range": info.get("range")} for info in room["singers"].values()]
+    singer_list = [{"id": info["id"], "part": info["part"], "range": info.get("range"), "name": info.get("name")} for info in room["singers"].values()]
     msg = json.dumps({"t": "r", "code": code, "singers": singer_list})
     targets = list(room["singers"].keys())
     if room["conductor"]:
@@ -128,15 +155,20 @@ async def handler(websocket):
                         continue
                 room["next_id"] = room.get("next_id", 0) + 1
                 singer_id = room["next_id"]
+                part = msg.get("part", "soprano")
+                custom_name = msg.get("name", "").strip()
+                name = custom_name or auto_assign_name(room, part)
                 room["singers"][websocket] = {
                     "id": singer_id,
-                    "part": msg.get("part", "soprano"),
+                    "part": part,
                     "range": msg.get("range"),
+                    "name": name,
+                    "custom_name": bool(custom_name),
                 }
                 my_room = room
                 my_code = code
                 my_role = "singer"
-                await websocket.send(json.dumps({"t": "joined", "code": code, "id": singer_id}))
+                await websocket.send(json.dumps({"t": "joined", "code": code, "id": singer_id, "name": name}))
                 broadcast_room_state(room, code)
 
             elif t in ("n", "syl", "vol", "parts") and my_role == "conductor" and my_room:
