@@ -46,7 +46,12 @@
   button:hover { background: #c23152; }
   /* Indicator controls */
   .controls-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
-  .sustain-toggle { padding: 2px 8px; border-radius: 6px; background: #222; font-size: 1.8rem; cursor: pointer; color: #888; transition: all 0.15s; }
+  .toggle-switch { position: relative; display: inline-flex; align-items: center; min-width: 160px; height: 36px; border-radius: 18px; background: #333; cursor: pointer; transition: background 0.25s; overflow: hidden; user-select: none; }
+  .toggle-switch.on { background: #e94560; }
+  .toggle-switch .toggle-knob { position: absolute; top: 3px; left: 3px; width: 30px; height: 30px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); transition: left 0.25s; z-index: 2; }
+  .toggle-switch.on .toggle-knob { left: calc(100% - 33px); }
+  .toggle-switch .toggle-label { flex: 1; text-align: center; font-size: 0.95rem; color: #ddd; padding: 0 38px; white-space: nowrap; z-index: 1; }
+  .toggle-switch .toggle-label .syl-key { font-size: 0.75rem; }
   .syl-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: #222; cursor: pointer; font-size: 1.8rem; color: #888; transition: all 0.15s; border: 2px solid transparent; }
   .syl-btn.active { background: #e94560; color: white; border-color: #e94560; }
   .syl-key { font-size: 1.8rem; color: rgba(255,255,255,0.35); }
@@ -129,8 +134,14 @@
         onchange="setNumParts(parseInt(this.value)||4)">
       <button onclick="setNumParts(numParts + 1)">+</button>
     </div>
-    <div class="sustain-toggle" id="sustainToggle" onclick="toggleSustain()">Sustain: Off <span class="syl-key">Space</span></div>
-    <div class="sustain-toggle" id="modeToggle" onclick="toggleAutoVoicing()">Manual Voicing <span class="syl-key">⌫</span></div>
+    <div class="toggle-switch" id="sustainToggle" onclick="toggleSustain()">
+      <div class="toggle-knob"></div>
+      <span class="toggle-label">Sustain <span class="syl-key">Space</span></span>
+    </div>
+    <div class="toggle-switch" id="modeToggle" onclick="toggleAutoVoicing()">
+      <div class="toggle-knob"></div>
+      <span class="toggle-label">Auto Voice <span class="syl-key">⌫</span></span>
+    </div>
   </div>
 </div>
 
@@ -1086,9 +1097,7 @@ function stopBpmHold(doInitial, delta) {
 function toggleSustain() {
   sustainMode = !sustainMode;
   const el = document.getElementById('sustainToggle');
-  el.innerHTML = (sustainMode ? 'Sustain: On' : 'Sustain: Off') + ' <span class="syl-key">Space</span>';
-  el.style.background = sustainMode ? '#e94560' : '#222';
-  el.style.color = sustainMode ? '#fff' : '#888';
+  el.classList.toggle('on', sustainMode);
 
   if (!sustainMode) {
     const pids = getPartIds();
@@ -1110,9 +1119,7 @@ function toggleAutoVoicing() {
   autoVoicing = !autoVoicing;
   document.getElementById('autoVoicingControls').style.display = autoVoicing ? '' : 'none';
   const el = document.getElementById('modeToggle');
-  el.innerHTML = (autoVoicing ? 'Auto Voicing' : 'Manual Voicing') + ' <span class="syl-key">⌫</span>';
-  el.style.background = autoVoicing ? '#e94560' : '#222';
-  el.style.color = autoVoicing ? '#fff' : '#888';
+  el.classList.toggle('on', autoVoicing);
   // Update volume key labels
   document.getElementById('volDownKey').textContent = autoVoicing ? '8' : '6';
   // Clear state when switching
