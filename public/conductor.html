@@ -85,7 +85,7 @@
     </div>
     <div id="masterDisplayContainer" style="flex:1;"></div>
   </div>
-  <div id="choirVizSection" style="margin-top:12px;display:none;">
+  <div id="choirVizSection" style="margin-top:12px;">
     <div style="display:flex;align-items:center;gap:12px;">
       <div id="choirSizeLabel" style="font-size:0.85rem;color:#888;white-space:nowrap;min-width:90px;">Choir Size: 0</div>
       <div style="flex:1;position:relative;">
@@ -1714,10 +1714,7 @@ function updateChoirViz() {
   const sizeLabel = document.getElementById('choirSizeLabel');
   if (!canvas || !section) return;
 
-  section.style.display = singers.length > 0 ? '' : 'none';
   sizeLabel.textContent = `Choir Size: ${singers.length}`;
-
-  if (singers.length === 0) return;
 
   // Set canvas resolution to match display size
   const rect = canvas.getBoundingClientRect();
@@ -1748,6 +1745,17 @@ function updateChoirViz() {
   ctx.moveTo(0, lineY);
   ctx.lineTo(w, lineY);
   ctx.stroke();
+
+  // Draw faint unlit squares evenly spaced along the line
+  const numSquares = 36; // roughly one per semitone across the range
+  const squareSize = 4;
+  for (let i = 0; i < numSquares; i++) {
+    const x = (i + 0.5) / numSquares * w;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(x - squareSize / 2, lineY - squareSize / 2, squareSize, squareSize);
+  }
+
+  if (singers.length === 0) return;
 
   // Use 'lighter' composite for additive color blending
   ctx.globalCompositeOperation = 'lighter';
