@@ -150,10 +150,7 @@
       <span class="toggle-label">Auto Voice <span class="syl-key">⌫</span></span>
     </div>
   </div>
-</div>
-
-<div id="tonicControls" class="section" style="display:none">
-  <div class="controls-row" style="gap:16px;">
+  <div id="tonicControls" class="controls-row" style="display:none;gap:16px;">
     <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;">
       Key:
       <select id="tonicLetterSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="updateTonicFromUI();">
@@ -183,9 +180,10 @@
   <div style="display:flex;gap:20px;align-items:flex-start;">
     <div id="autoControlsLeft" style="flex-shrink:0;">
       <div class="controls-row" style="gap:16px;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;cursor:pointer;">
-          <input type="checkbox" id="rootInBassCheck" checked onchange="rootInBass=this.checked"> Root in Bass
-        </label>
+        <div class="toggle-switch on" id="rootInBassToggle" onclick="toggleRootInBass()" style="min-width:140px;">
+          <div class="toggle-knob"></div>
+          <span class="toggle-label">Root in Bass</span>
+        </div>
       </div>
       <div id="chordDisplay" style="font-size:2.5rem;font-weight:bold;color:#fbbf24;margin-top:12px;min-height:3rem;"></div>
       <div id="degreeHints" style="font-size:0.85rem;color:#666;margin-top:8px;">
@@ -200,7 +198,7 @@
   <div style="display:flex;justify-content:center;margin-bottom:6px;">
     <div class="toggle-switch on" id="qwertyToggle" onclick="toggleQwerty()">
       <div class="toggle-knob"></div>
-      <span class="toggle-label">QWERTY <span class="syl-key">Tab</span></span>
+      <span class="toggle-label">QWERTY <span class="syl-key">⇪</span></span>
     </div>
   </div>
   <div class="piano-wrapper">
@@ -1259,9 +1257,7 @@ function toggleSustain() {
 function toggleAutoVoicing() {
   autoVoicing = !autoVoicing;
   document.getElementById('autoVoicingControls').style.display = autoVoicing ? '' : 'none';
-  // Show tonic controls when auto-voicing is on OR when QWERTY is off
-  const tonicEl = document.getElementById('tonicControls');
-  if (tonicEl) tonicEl.style.display = (autoVoicing || !qwertyShortcuts) ? '' : 'none';
+  updateTonicControlsVisibility();
   const el = document.getElementById('modeToggle');
   el.classList.toggle('on', autoVoicing);
   // Clear state when switching
@@ -1280,10 +1276,19 @@ function toggleQwerty() {
   qwertyShortcuts = !qwertyShortcuts;
   const el = document.getElementById('qwertyToggle');
   if (el) el.classList.toggle('on', qwertyShortcuts);
-  // Show tonic controls whenever QWERTY is off (scale degree mode needs tonic)
-  const tonicEl = document.getElementById('tonicControls');
-  if (tonicEl) tonicEl.style.display = qwertyShortcuts ? 'none' : '';
+  updateTonicControlsVisibility();
   updatePianoLabels();
+}
+
+function toggleRootInBass() {
+  rootInBass = !rootInBass;
+  const el = document.getElementById('rootInBassToggle');
+  if (el) el.classList.toggle('on', rootInBass);
+}
+
+function updateTonicControlsVisibility() {
+  const tonicEl = document.getElementById('tonicControls');
+  if (tonicEl) tonicEl.style.display = (autoVoicing || !qwertyShortcuts) ? 'flex' : 'none';
 }
 
 function getChordQuality(pitchClass) {
@@ -2155,8 +2160,8 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  // Tab: toggle QWERTY shortcuts
-  if (e.code === 'Tab') { e.preventDefault(); toggleQwerty(); return; }
+  // CapsLock: toggle QWERTY shortcuts
+  if (e.code === 'CapsLock') { e.preventDefault(); toggleQwerty(); return; }
 
   // Volume — always ArrowUp/ArrowDown (before input guard so it works globally with modifiers)
   if (e.code === 'ArrowUp') { e.preventDefault(); startVolHold(1); return; }
