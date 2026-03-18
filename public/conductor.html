@@ -52,6 +52,10 @@
   .toggle-switch.on .toggle-knob { left: calc(100% - 33px); }
   .toggle-switch .toggle-label { flex: 1; text-align: center; font-size: 0.95rem; color: #ddd; padding: 0 38px; white-space: nowrap; z-index: 1; }
   .toggle-switch .toggle-label .syl-key { font-size: 0.75rem; }
+  /* Choir visualization squares: 49 squares, gap = 50% of square width.
+     With 49 squares and 48 gaps: totalWidth = 49*s + 48*(0.5*s) = 73*s → s = 100%/73 */
+  #choirSquares { gap: calc(100% / 146); /* 0.5s = 100%/146 */ }
+  .choir-sq { flex: 0 0 calc(100% / 73); aspect-ratio: 1; background: rgba(255,255,255,0.1); border-radius: 1px; transition: background 0.3s, box-shadow 0.3s; cursor: default; }
   .syl-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: #222; cursor: pointer; font-size: 1.8rem; color: #888; transition: all 0.15s; border: 2px solid transparent; }
   .syl-btn.active { background: #e94560; color: white; border-color: #e94560; }
   .syl-key { font-size: 1.8rem; color: rgba(255,255,255,0.35); }
@@ -86,12 +90,10 @@
     <div id="masterDisplayContainer" style="flex:1;"></div>
   </div>
   <div id="choirVizSection" style="margin-top:12px;">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div id="choirSizeLabel" style="font-size:0.85rem;color:#888;white-space:nowrap;min-width:90px;">Choir Size: 0</div>
-      <div style="flex:1;position:relative;">
-        <canvas id="choirCanvas" height="24" style="width:100%;height:24px;display:block;border-radius:4px;"></canvas>
-      </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div id="choirSizeLabel" style="font-size:0.85rem;color:#888;white-space:nowrap;">Choir Size: 0</div>
     </div>
+    <div id="choirSquares" style="display:flex;margin-top:6px;"></div>
   </div>
 </div>
 
@@ -1602,6 +1604,8 @@ function createRoom() {
   ws.onclose = () => { document.getElementById('status').textContent = 'Disconnected'; };
 }
 
+buildChoirSquares();
+
 if (new URLSearchParams(location.search).has('test')) {
   createRoom();
 }
@@ -1708,112 +1712,94 @@ function buildPiano() {
 
 // === Choir visualization ===
 
+// C2 = MIDI 36, C6 = MIDI 84 → 48 semitones (49 notes inclusive)
+const VIZ_LO = 36, VIZ_HI = 84;
+const VIZ_NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+
+function midiToLabel(midi) {
+  return VIZ_NOTE_NAMES[midi % 12] + Math.floor(midi / 12 - 1);
+}
+
+let choirSquaresBuilt = false;
+
+function buildChoirSquares() {
+  const container = document.getElementById('choirSquares');
+  if (!container) return;
+  container.innerHTML = '';
+  const count = VIZ_HI - VIZ_LO + 1; // 49 notes
+  for (let midi = VIZ_LO; midi <= VIZ_HI; midi++) {
+    const sq = document.createElement('div');
+    sq.className = 'choir-sq';
+    sq.dataset.midi = midi;
+    sq.title = midiToLabel(midi);
+    container.appendChild(sq);
+  }
+  choirSquaresBuilt = true;
+}
+
 function updateChoirViz() {
-  const canvas = document.getElementById('choirCanvas');
-  const section = document.getElementById('choirVizSection');
   const sizeLabel = document.getElementById('choirSizeLabel');
-  if (!canvas || !section) return;
+  if (sizeLabel) sizeLabel.textContent = `Choir Size: ${singers.length}`;
 
-  sizeLabel.textContent = `Choir Size: ${singers.length}`;
+  if (!choirSquaresBuilt) buildChoirSquares();
 
-  // Set canvas resolution to match display size
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  canvas.width = Math.round(rect.width * dpr);
-  canvas.height = Math.round(rect.height * dpr);
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  const w = rect.width;
-  const h = rect.height;
+  const squares = document.querySelectorAll('.choir-sq');
+  if (!squares.length) return;
 
-  // Clear
-  ctx.clearRect(0, 0, w, h);
-
-  // Range: G2 (MIDI 43) to G5 (MIDI 79)
-  const vizLo = 43, vizHi = 79;
-  const vizRange = vizHi - vizLo;
-
-  function midiToX(midi) {
-    return ((midi - vizLo) / vizRange) * w;
-  }
-
-  // Draw baseline
-  const lineY = h * 0.5;
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(0, lineY);
-  ctx.lineTo(w, lineY);
-  ctx.stroke();
-
-  // Draw faint unlit squares evenly spaced along the line
-  const numSquares = 36; // roughly one per semitone across the range
-  const squareSize = 4;
-  for (let i = 0; i < numSquares; i++) {
-    const x = (i + 0.5) / numSquares * w;
-    ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(x - squareSize / 2, lineY - squareSize / 2, squareSize, squareSize);
-  }
+  // Reset all squares to base faint state
+  squares.forEach(sq => {
+    sq.style.background = 'rgba(255,255,255,0.1)';
+    sq.style.boxShadow = 'none';
+  });
 
   if (singers.length === 0) return;
 
-  // Use 'lighter' composite for additive color blending
-  ctx.globalCompositeOperation = 'lighter';
-
-  // Draw each singer as a smear of light
+  // Build per-square color accumulation
+  // For each singer, light up the squares in their range with their part color
+  const squareColors = {}; // midi -> [{r,g,b,alpha}]
   for (const singer of singers) {
     const part = getPartById(singer.part);
     if (!part) continue;
-
-    // Get singer range or use part default
     const sRange = singer.range || part.range;
-    const lo = sRange[0];
-    const hi = sRange[1];
+    const lo = sRange[0], hi = sRange[1];
     const mid = (lo + hi) / 2;
-
-    // Position
-    const cx = midiToX(mid);
-    const leftX = midiToX(lo);
-    const rightX = midiToX(hi);
-    const halfWidth = Math.max((rightX - leftX) / 2, 3);
-
-    // Parse part color to RGB
     const rgb = parseColor(part.color);
 
-    // Draw Gaussian-like smear using multiple overlapping translucent lines
-    const steps = Math.min(40, Math.max(12, Math.round(halfWidth)));
-    for (let s = 0; s <= steps; s++) {
-      const t = s / steps; // 0 = center, 1 = edge
-      // Gaussian falloff: opacity peaks at center, fades to edges
-      const alpha = Math.exp(-3 * t * t) * 0.4;
-      const xOffset = t * halfWidth;
-
-      ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
-      ctx.lineWidth = 6;
-
-      // Right side
-      ctx.beginPath();
-      ctx.moveTo(cx + xOffset, lineY - 3);
-      ctx.lineTo(cx + xOffset, lineY + 3);
-      ctx.stroke();
-
-      // Left side (mirror)
-      if (s > 0) {
-        ctx.beginPath();
-        ctx.moveTo(cx - xOffset, lineY - 3);
-        ctx.lineTo(cx - xOffset, lineY + 3);
-        ctx.stroke();
-      }
+    for (let midi = Math.max(lo, VIZ_LO); midi <= Math.min(hi, VIZ_HI); midi++) {
+      if (!squareColors[midi]) squareColors[midi] = [];
+      // Gaussian falloff from midpoint
+      const dist = Math.abs(midi - mid);
+      const halfRange = Math.max((hi - lo) / 2, 1);
+      const t = dist / halfRange;
+      const alpha = Math.exp(-2.5 * t * t) * 0.5;
+      squareColors[midi].push({ r: rgb[0], g: rgb[1], b: rgb[2], a: alpha });
     }
-
-    // Bright center dot
-    ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.9)`;
-    ctx.beginPath();
-    ctx.arc(cx, lineY, 2.5, 0, Math.PI * 2);
-    ctx.fill();
   }
 
-  ctx.globalCompositeOperation = 'source-over';
+  // Apply accumulated colors to squares
+  squares.forEach(sq => {
+    const midi = parseInt(sq.dataset.midi);
+    const colors = squareColors[midi];
+    if (!colors || colors.length === 0) return;
+
+    // Additive blend
+    let r = 0, g = 0, b = 0, a = 0;
+    for (const c of colors) {
+      r += c.r * c.a;
+      g += c.g * c.a;
+      b += c.b * c.a;
+      a += c.a;
+    }
+    a = Math.min(a, 1);
+    r = Math.min(Math.round(r / Math.max(a, 0.01)), 255);
+    g = Math.min(Math.round(g / Math.max(a, 0.01)), 255);
+    b = Math.min(Math.round(b / Math.max(a, 0.01)), 255);
+
+    sq.style.background = `rgba(${r},${g},${b},${Math.max(a, 0.1)})`;
+    if (a > 0.2) {
+      sq.style.boxShadow = `0 0 ${Math.round(a * 6)}px rgba(${r},${g},${b},${a * 0.6})`;
+    }
+  });
 }
 
 const _colorCache = {};
