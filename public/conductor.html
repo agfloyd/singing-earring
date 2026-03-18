@@ -88,6 +88,7 @@
   <div class="master-display-container" style="display:flex;align-items:stretch;">
     <div class="vol-controls" id="volControls" style="display:none">
       <div class="vol-btn" onclick="adjustVolume(5)">▲<span class="vol-key">↑</span></div>
+      <button onclick="resetVolumes()" style="font-size:0.6rem;padding:2px 6px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;">Reset</button>
       <div class="vol-btn" onclick="adjustVolume(-5)">▼<span class="vol-key">↓</span></div>
     </div>
     <div id="masterDisplayContainer" style="flex:1;"></div>
@@ -95,7 +96,7 @@
   <div id="choirVizSection" style="margin-top:12px;">
     <div style="display:flex;align-items:center;gap:8px;">
       <div id="choirSizeLabel" style="font-size:0.85rem;color:#888;white-space:nowrap;">Choir Size: 0</div>
-      <button onclick="resetAllocation()" style="font-size:0.7rem;padding:2px 8px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;">Reset</button>
+      <button onclick="resetAllocation()" style="font-size:0.7rem;padding:2px 8px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;">Reset part allocation</button>
     </div>
     <div id="choirSquares" style="display:flex;margin-top:6px;"></div>
   </div>
@@ -151,6 +152,32 @@
   </div>
 </div>
 
+<div id="tonicControls" class="section" style="display:none">
+  <div class="controls-row" style="gap:16px;">
+    <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;">
+      Key:
+      <select id="tonicLetterSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="updateTonicFromUI();">
+        <option value="0">C</option><option value="2">D</option><option value="4">E</option>
+        <option value="5">F</option><option value="7">G</option><option value="9">A</option>
+        <option value="11">B</option>
+      </select>
+      <span style="display:inline-flex;flex-direction:column;gap:1px;vertical-align:middle;">
+        <button id="sharpBtn" type="button" onclick="toggleAccidental('sharp')" style="width:24px;height:18px;font-size:13px;line-height:1;padding:0;border:1px solid #555;border-radius:3px 3px 0 0;background:#1a1a2e;color:#777;cursor:pointer;font-family:serif;">♯</button>
+        <button id="flatBtn" type="button" onclick="toggleAccidental('flat')" style="width:24px;height:18px;font-size:13px;line-height:1;padding:0;border:1px solid #555;border-radius:0 0 3px 3px;background:#1a1a2e;color:#777;cursor:pointer;font-family:serif;">♭</button>
+      </span>
+      <select id="modeSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="selectedKey.mode=this.value;previousVoicing=null;updateStaffDisplay();updateChordDisplay();updatePianoLabels();">
+        <option value="major">Major</option>
+        <option value="minor">Minor</option>
+        <option value="dorian" style="color:#888;">Dorian</option>
+        <option value="phrygian" style="color:#888;">Phrygian</option>
+        <option value="lydian" style="color:#888;">Lydian</option>
+        <option value="mixolydian" style="color:#888;">Mixolydian</option>
+        <option value="locrian" style="color:#888;">Locrian</option>
+      </select>
+    </label>
+  </div>
+</div>
+
 <div id="autoVoicingControls" class="section" style="display:none">
   <h2>Auto Voicing</h2>
   <div style="display:flex;gap:20px;align-items:flex-start;">
@@ -160,32 +187,9 @@
           <input type="checkbox" id="rootInBassCheck" checked onchange="rootInBass=this.checked"> Root in Bass
         </label>
       </div>
-      <div class="controls-row" style="gap:16px;margin-top:8px;">
-        <label style="display:flex;align-items:center;gap:6px;font-size:1rem;color:#ccc;">
-          Key:
-          <select id="tonicLetterSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="updateTonicFromUI();">
-            <option value="0">C</option><option value="2">D</option><option value="4">E</option>
-            <option value="5">F</option><option value="7">G</option><option value="9">A</option>
-            <option value="11">B</option>
-          </select>
-          <span style="display:inline-flex;flex-direction:column;gap:1px;vertical-align:middle;">
-            <button id="sharpBtn" type="button" onclick="toggleAccidental('sharp')" style="width:24px;height:18px;font-size:13px;line-height:1;padding:0;border:1px solid #555;border-radius:3px 3px 0 0;background:#1a1a2e;color:#777;cursor:pointer;font-family:serif;">♯</button>
-            <button id="flatBtn" type="button" onclick="toggleAccidental('flat')" style="width:24px;height:18px;font-size:13px;line-height:1;padding:0;border:1px solid #555;border-radius:0 0 3px 3px;background:#1a1a2e;color:#777;cursor:pointer;font-family:serif;">♭</button>
-          </span>
-          <select id="modeSelect" class="midi-select" style="width:auto;padding:4px 8px;" onchange="selectedKey.mode=this.value;previousVoicing=null;updateStaffDisplay();updateChordDisplay();updatePianoLabels();">
-            <option value="major">Major</option>
-            <option value="minor">Minor</option>
-            <option value="dorian" style="color:#888;">Dorian</option>
-            <option value="phrygian" style="color:#888;">Phrygian</option>
-            <option value="lydian" style="color:#888;">Lydian</option>
-            <option value="mixolydian" style="color:#888;">Mixolydian</option>
-            <option value="locrian" style="color:#888;">Locrian</option>
-          </select>
-        </label>
-      </div>
       <div id="chordDisplay" style="font-size:2.5rem;font-weight:bold;color:#fbbf24;margin-top:12px;min-height:3rem;"></div>
       <div id="degreeHints" style="font-size:0.85rem;color:#666;margin-top:8px;">
-        Press 1–7 for scale degrees. Hold 0=dim, -=minor, ==major.
+        Press 1–9 for scale degrees. Hold 0=dim, -=minor, ==major, [=7, ]=maj7, \=9
       </div>
     </div>
     <div id="staffContainer" style="flex:1;min-width:0;"></div>
@@ -418,7 +422,7 @@ let autoVoicing = false;
 let selectedKey = { tonic: 0, mode: 'major' }; // tonic as pitch class (0=C)
 let rootInBass = true;
 let currentChord = null;          // { root: pitchClass, quality: 'major'|'minor'|'dim'|'aug' }
-let chordModifiers = { dim: false, min: false, maj: false };
+let chordModifiers = { dim: false, min: false, maj: false, add7: false, addMaj7: false, add9: false };
 let previousVoicing = null;       // snapshot of partNotes for voice leading
 let voicingResetTimer = null;     // 5-second inactivity timer to reset previousVoicing
 
@@ -1157,6 +1161,14 @@ function updateIndicators() {
 
 // === Volume system ===
 
+function resetVolumes() {
+  for (const part of activeParts) {
+    partVolumes[part.id] = 50;
+  }
+  updateVolumeBars();
+  sendVolume();
+}
+
 function adjustVolume(delta) {
   const parts = getTargetParts();
   for (const pid of parts) {
@@ -1247,6 +1259,9 @@ function toggleSustain() {
 function toggleAutoVoicing() {
   autoVoicing = !autoVoicing;
   document.getElementById('autoVoicingControls').style.display = autoVoicing ? '' : 'none';
+  // Show tonic controls when auto-voicing is on OR when QWERTY is off
+  const tonicEl = document.getElementById('tonicControls');
+  if (tonicEl) tonicEl.style.display = (autoVoicing || !qwertyShortcuts) ? '' : 'none';
   const el = document.getElementById('modeToggle');
   el.classList.toggle('on', autoVoicing);
   // Clear state when switching
@@ -1265,6 +1280,9 @@ function toggleQwerty() {
   qwertyShortcuts = !qwertyShortcuts;
   const el = document.getElementById('qwertyToggle');
   if (el) el.classList.toggle('on', qwertyShortcuts);
+  // Show tonic controls whenever QWERTY is off (scale degree mode needs tonic)
+  const tonicEl = document.getElementById('tonicControls');
+  if (tonicEl) tonicEl.style.display = qwertyShortcuts ? 'none' : '';
   updatePianoLabels();
 }
 
@@ -1316,8 +1334,27 @@ function selectNoteChord(noteName) {
   setChord({ root, quality });
 }
 
+function getChordIntervals(chord) {
+  const base = CHORD_INTERVALS[chord.quality] || CHORD_INTERVALS.major;
+  const intervals = [...base];
+  // Add extensions from modifiers
+  if (chordModifiers.add7) {
+    // Dominant 7th (minor 7th interval = 10 semitones)
+    intervals.push(10);
+  }
+  if (chordModifiers.addMaj7) {
+    // Major 7th interval = 11 semitones
+    intervals.push(11);
+  }
+  if (chordModifiers.add9) {
+    // 9th = 14 semitones (= 2 mod 12)
+    intervals.push(14);
+  }
+  return intervals;
+}
+
 function generateVoicing(chord) {
-  const intervals = CHORD_INTERVALS[chord.quality] || CHORD_INTERVALS.major;
+  const intervals = getChordIntervals(chord);
   const chordTones = intervals.map(i => (chord.root + i) % 12);
 
   // Try all pitch class assignments and pick the overall best voicing
@@ -1521,7 +1558,14 @@ function updateChordDisplay() {
   }
   const rootName = noteNameInKey(currentChord.root);
   const qualLabel = QUALITY_LABELS[currentChord.quality] || '';
-  el.textContent = rootName + qualLabel;
+  const isMinor = currentChord.quality === 'minor';
+  // Build extension suffix
+  let ext = '';
+  if (chordModifiers.addMaj7 && isMinor) ext += '(maj7)';
+  else if (chordModifiers.addMaj7) ext += 'maj7';
+  else if (chordModifiers.add7) ext += '7';
+  if (chordModifiers.add9) ext += ext ? '(9)' : 'add9';
+  el.textContent = rootName + qualLabel + ext;
 }
 
 function updateStaffDisplay() {
@@ -2114,6 +2158,10 @@ document.addEventListener('keydown', (e) => {
   // Tab: toggle QWERTY shortcuts
   if (e.code === 'Tab') { e.preventDefault(); toggleQwerty(); return; }
 
+  // Volume — always ArrowUp/ArrowDown (before input guard so it works globally with modifiers)
+  if (e.code === 'ArrowUp') { e.preventDefault(); startVolHold(1); return; }
+  if (e.code === 'ArrowDown') { e.preventDefault(); startVolHold(-1); return; }
+
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
   // Backspace/Delete: hold for tonic shortcut, tap for mode toggle
@@ -2153,10 +2201,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === '.') { e.preventDefault(); startBpmHold(5); return; }
   if (e.key === ' ') { e.preventDefault(); toggleSustain(); return; }
 
-  // Volume — always ArrowUp/ArrowDown
-  if (e.code === 'ArrowUp') { e.preventDefault(); startVolHold(1); return; }
-  if (e.code === 'ArrowDown') { e.preventDefault(); startVolHold(-1); return; }
-
   if (!qwertyShortcuts) {
     // Scale degree mode: number keys select scale degrees, letter keys select chords/notes
     if (e.code === 'Digit1') { e.preventDefault(); selectScaleDegree(1); return; }
@@ -2171,6 +2215,9 @@ document.addEventListener('keydown', (e) => {
     if (e.code === 'Digit0') { e.preventDefault(); chordModifiers.dim = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Minus') { e.preventDefault(); chordModifiers.min = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Equal') { e.preventDefault(); chordModifiers.maj = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'BracketLeft') { e.preventDefault(); chordModifiers.add7 = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'BracketRight') { e.preventDefault(); chordModifiers.addMaj7 = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Backslash') { e.preventDefault(); chordModifiers.add9 = true; updateChordDisplay(); updateStaffDisplay(); return; }
 
     // Letter keys A-G: select chord by note name (auto-voicing) or note (manual)
     const NOTE_CODES = { KeyC: 'C', KeyD: 'D', KeyE: 'E', KeyF: 'F', KeyG: 'G', KeyA: 'A', KeyB: 'B' };
@@ -2191,6 +2238,13 @@ document.addEventListener('keydown', (e) => {
       }
       return;
     }
+  }
+
+  // Chord extension modifiers [, ], \ — active when auto-voicing is on (in either QWERTY mode)
+  if (autoVoicing) {
+    if (e.code === 'BracketLeft') { e.preventDefault(); chordModifiers.add7 = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'BracketRight') { e.preventDefault(); chordModifiers.addMaj7 = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Backslash') { e.preventDefault(); chordModifiers.add9 = true; updateChordDisplay(); updateStaffDisplay(); return; }
   }
 
   if (qwertyShortcuts) {
@@ -2232,6 +2286,13 @@ document.addEventListener('keyup', (e) => {
 
   // Volume keyup — always arrow keys
   if (e.code === 'ArrowUp' || e.code === 'ArrowDown') { stopVolHold(); return; }
+
+  // Chord extension modifier keyup — active when auto-voicing is on (in either QWERTY mode)
+  if (autoVoicing || !qwertyShortcuts) {
+    if (e.code === 'BracketLeft') { chordModifiers.add7 = false; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'BracketRight') { chordModifiers.addMaj7 = false; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Backslash') { chordModifiers.add9 = false; updateChordDisplay(); updateStaffDisplay(); return; }
+  }
 
   if (!qwertyShortcuts) {
     // Scale degree mode keyup
