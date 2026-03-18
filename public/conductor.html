@@ -189,7 +189,7 @@
       </div>
       <div id="chordDisplay" style="font-size:2.5rem;font-weight:bold;color:#fbbf24;margin-top:12px;min-height:3rem;"></div>
       <div id="degreeHints" style="font-size:0.85rem;color:#666;margin-top:8px;">
-        Press 1–9 for scale degrees. Hold 0=dim, -=minor, ==major, [=7, ]=maj7, \=9
+        Press 1–9 for scale degrees. Hold `=dim, 1=aug, -=minor, ==major, [=7, ]=maj7, \=add9
       </div>
     </div>
     <div id="staffContainer" style="flex:1;min-width:0;"></div>
@@ -422,7 +422,7 @@ let autoVoicing = false;
 let selectedKey = { tonic: 0, mode: 'major' }; // tonic as pitch class (0=C)
 let rootInBass = true;
 let currentChord = null;          // { root: pitchClass, quality: 'major'|'minor'|'dim'|'aug' }
-let chordModifiers = { dim: false, min: false, maj: false, add7: false, addMaj7: false, add9: false };
+let chordModifiers = { dim: false, aug: false, min: false, maj: false, add7: false, addMaj7: false, add9: false };
 let previousVoicing = null;       // snapshot of partNotes for voice leading
 let voicingResetTimer = null;     // 5-second inactivity timer to reset previousVoicing
 
@@ -1288,6 +1288,7 @@ function toggleQwerty() {
 
 function getChordQuality(pitchClass) {
   if (chordModifiers.dim) return 'dim';
+  if (chordModifiers.aug) return 'aug';
   if (chordModifiers.min) return 'minor';
   if (chordModifiers.maj) return 'major';
   const scale = SCALE_DEGREES[selectedKey.mode];
@@ -1307,6 +1308,7 @@ function selectScaleDegree(degree) {
   const root = (selectedKey.tonic + entry.interval) % 12;
   let quality = entry.quality;
   if (chordModifiers.dim) quality = 'dim';
+  else if (chordModifiers.aug) quality = 'aug';
   else if (chordModifiers.min) quality = 'minor';
   else if (chordModifiers.maj) quality = 'major';
   setChord({ root, quality, bassOctaveUp: degree > 7 });
@@ -1329,6 +1331,7 @@ function selectNoteChord(noteName) {
   if (root === undefined) return;
   let quality = 'major';
   if (chordModifiers.dim) quality = 'dim';
+  else if (chordModifiers.aug) quality = 'aug';
   else if (chordModifiers.min) quality = 'minor';
   else if (chordModifiers.maj) quality = 'major';
   setChord({ root, quality });
@@ -2117,21 +2120,18 @@ function buildRangeIndicators() {
 // === Keyboard mapping ===
 
 const KEY_TO_MIDI = {
-  '`': 48, '1': 49, 'd': 50, '2': 51,
-  'q': 52, '3': 54, 'w': 53, '4': 56,
-  'e': 55, '5': 58, 'r': 57, 't': 59,
-  'y': 60, '7': 61, 'u': 62, '8': 63,
-  'i': 64, 'o': 65, '0': 66, 'p': 67,
-  '-': 68, '[': 69, '=': 70, ']': 71, '\\': 72,
+  // White keys: Q=C3, W=D3, E=E3, R=F3, T=G3, Y=A3, U=B3, I=C4, O=D4, P=E4
+  'q': 48, 'w': 50, 'e': 52, 'r': 53, 't': 55, 'y': 57, 'u': 59,
+  'i': 60, 'o': 62, 'p': 64,
+  // Black keys: 2=C#3, 3=D#3, 5=F#3, 6=G#3, 7=A#3, 9=C#4, 0=D#4
+  '2': 49, '3': 51, '5': 54, '6': 56, '7': 58, '9': 61, '0': 63,
 };
 
 const CODE_TO_KEY = {
-  'Backquote': '`', 'Digit1': '1', 'KeyD': 'd', 'Digit2': '2',
   'KeyQ': 'q', 'KeyW': 'w', 'KeyE': 'e', 'KeyR': 'r', 'KeyT': 't',
   'KeyY': 'y', 'KeyU': 'u', 'KeyI': 'i', 'KeyO': 'o', 'KeyP': 'p',
-  'BracketLeft': '[', 'BracketRight': ']', 'Backslash': '\\',
-  'Digit3': '3', 'Digit4': '4', 'Digit5': '5', 'Digit7': '7', 'Digit8': '8',
-  'Digit0': '0', 'Minus': '-', 'Equal': '=',
+  'Digit2': '2', 'Digit3': '3', 'Digit5': '5', 'Digit6': '6', 'Digit7': '7',
+  'Digit9': '9', 'Digit0': '0',
 };
 
 const heldKeyboard = new Set();
@@ -2212,7 +2212,9 @@ document.addEventListener('keydown', (e) => {
     if (e.code === 'Digit7') { e.preventDefault(); selectScaleDegree(7); return; }
     if (e.code === 'Digit8') { e.preventDefault(); selectScaleDegree(8); return; }
     if (e.code === 'Digit9') { e.preventDefault(); selectScaleDegree(9); return; }
-    if (e.code === 'Digit0') { e.preventDefault(); chordModifiers.dim = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    // Quality modifiers (these are handled globally below for autoVoicing + QWERTY too)
+    if (e.code === 'Backquote') { e.preventDefault(); chordModifiers.dim = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Digit1') { e.preventDefault(); chordModifiers.aug = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Minus') { e.preventDefault(); chordModifiers.min = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Equal') { e.preventDefault(); chordModifiers.maj = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'BracketLeft') { e.preventDefault(); chordModifiers.add7 = true; updateChordDisplay(); updateStaffDisplay(); return; }
@@ -2240,8 +2242,12 @@ document.addEventListener('keydown', (e) => {
     }
   }
 
-  // Chord extension modifiers [, ], \ — active when auto-voicing is on (in either QWERTY mode)
+  // All chord modifiers — active when auto-voicing is on (in either QWERTY mode)
   if (autoVoicing) {
+    if (e.code === 'Backquote') { e.preventDefault(); chordModifiers.dim = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Digit1') { e.preventDefault(); chordModifiers.aug = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Minus') { e.preventDefault(); chordModifiers.min = true; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Equal') { e.preventDefault(); chordModifiers.maj = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'BracketLeft') { e.preventDefault(); chordModifiers.add7 = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'BracketRight') { e.preventDefault(); chordModifiers.addMaj7 = true; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Backslash') { e.preventDefault(); chordModifiers.add9 = true; updateChordDisplay(); updateStaffDisplay(); return; }
@@ -2287,18 +2293,19 @@ document.addEventListener('keyup', (e) => {
   // Volume keyup — always arrow keys
   if (e.code === 'ArrowUp' || e.code === 'ArrowDown') { stopVolHold(); return; }
 
-  // Chord extension modifier keyup — active when auto-voicing is on (in either QWERTY mode)
+  // All chord modifier keyup — active when auto-voicing is on (in either QWERTY mode)
   if (autoVoicing || !qwertyShortcuts) {
+    if (e.code === 'Backquote') { chordModifiers.dim = false; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Digit1') { chordModifiers.aug = false; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Minus') { chordModifiers.min = false; updateChordDisplay(); updateStaffDisplay(); return; }
+    if (e.code === 'Equal') { chordModifiers.maj = false; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'BracketLeft') { chordModifiers.add7 = false; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'BracketRight') { chordModifiers.addMaj7 = false; updateChordDisplay(); updateStaffDisplay(); return; }
     if (e.code === 'Backslash') { chordModifiers.add9 = false; updateChordDisplay(); updateStaffDisplay(); return; }
   }
 
   if (!qwertyShortcuts) {
-    // Scale degree mode keyup
-    if (e.code === 'Digit0') { chordModifiers.dim = false; updateChordDisplay(); updateStaffDisplay(); return; }
-    if (e.code === 'Minus') { chordModifiers.min = false; updateChordDisplay(); updateStaffDisplay(); return; }
-    if (e.code === 'Equal') { chordModifiers.maj = false; updateChordDisplay(); updateStaffDisplay(); return; }
+    // Scale degree mode keyup (these were already handled above if autoVoicing);
     if (!sustainMode && /^Digit[1-9]$/.test(e.code)) {
       for (const pid of getPartIds()) partNotes[pid] = -1;
       currentChord = null;
