@@ -636,6 +636,7 @@ function initParts(n) {
 
   // Broadcast new part config to singers
   sendPartConfig();
+  buildChoirSquares();
   updateChoirViz();
 }
 
@@ -1580,13 +1581,9 @@ function createRoom() {
       document.getElementById('midiSection').style.display = '';
       document.getElementById('controlsSection').style.display = '';
       document.getElementById('keyboardSection').style.display = '';
+      initParts(numParts);
       initMIDI();
-      buildRangeIndicators();
       updateIndicators();
-      sendSyllable();
-      sendVolume();
-      // Send part config to any early joiners
-      sendPartConfig();
     } else if (msg.t === 'r') {
       singers = msg.singers || [];
       // Update counts in part columns
@@ -1603,8 +1600,6 @@ function createRoom() {
   };
   ws.onclose = () => { document.getElementById('status').textContent = 'Disconnected'; };
 }
-
-buildChoirSquares();
 
 if (new URLSearchParams(location.search).has('test')) {
   createRoom();
@@ -1720,13 +1715,10 @@ function midiToLabel(midi) {
   return VIZ_NOTE_NAMES[midi % 12] + Math.floor(midi / 12 - 1);
 }
 
-let choirSquaresBuilt = false;
-
 function buildChoirSquares() {
   const container = document.getElementById('choirSquares');
   if (!container) return;
   container.innerHTML = '';
-  const count = VIZ_HI - VIZ_LO + 1; // 49 notes
   for (let midi = VIZ_LO; midi <= VIZ_HI; midi++) {
     const sq = document.createElement('div');
     sq.className = 'choir-sq';
@@ -1734,14 +1726,13 @@ function buildChoirSquares() {
     sq.title = midiToLabel(midi);
     container.appendChild(sq);
   }
-  choirSquaresBuilt = true;
 }
 
 function updateChoirViz() {
   const sizeLabel = document.getElementById('choirSizeLabel');
   if (sizeLabel) sizeLabel.textContent = `Choir Size: ${singers.length}`;
 
-  if (!choirSquaresBuilt) buildChoirSquares();
+  if (!document.querySelectorAll('.choir-sq').length) buildChoirSquares();
 
   const squares = document.querySelectorAll('.choir-sq');
   if (!squares.length) return;
