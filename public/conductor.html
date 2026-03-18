@@ -24,6 +24,8 @@
   .part-column .part-label { font-size: 1.3rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .part-column .part-modifier { font-size: 1.3rem; opacity: 0.4; margin-top: 2px; }
   .part-column .part-count { font-size: 1.2rem; font-weight: bold; }
+  .part-column .part-count::-webkit-inner-spin-button,
+  .part-column .part-count::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .part-column .part-syllable { font-size: 1.8rem; font-weight: bold; margin: 6px 0 4px; height: 2.2rem; overflow: hidden; }
   .part-column .part-note { font-size: 1.8rem; font-weight: 600; height: 2.2rem; overflow: hidden; opacity: 0.7; }
   .part-column .vol-bar-wrap { position: absolute; top: 8px; bottom: 8px; right: 6px; width: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
@@ -96,7 +98,7 @@
   <div id="choirVizSection" style="margin-top:12px;">
     <div style="display:flex;align-items:center;gap:8px;">
       <div id="choirSizeLabel" style="font-size:0.85rem;color:#888;white-space:nowrap;">Choir Size: 0</div>
-      <button onclick="resetAllocation()" style="font-size:0.7rem;padding:2px 8px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;">Reset part allocation</button>
+      <button onclick="resetAllocation()" style="font-size:0.7rem;padding:2px 8px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;position:relative;z-index:20;">Reset part allocation</button>
     </div>
     <div id="choirSquares" style="display:flex;margin-top:6px;"></div>
   </div>
@@ -727,35 +729,98 @@ function reassignSingersWithLocks() {
   }
 }
 
-function togglePartLock(partId) {
-  if (partLocks[partId] != null) {
-    partLocks[partId] = null;
+function adjustPartCount(partId, delta) {
+  const current = singers.filter(s => s.part === partId).length;
+  const target = Math.max(0, Math.min(singers.length, current + delta));
+  if (target === current) return;
+  setPartCount(partId, target);
+}
+
+function setPartCount(partId, target) {
+  const current = singers.filter(s => s.part === partId).length;
+  if (target === current) return;
+
+  // Track old assignments for animation
+  const oldPartMap = {};
+  for (const s of singers) oldPartMap[s.id] = s.part;
+
+  const part = activeParts.find(p => p.id === partId);
+  if (!part) return;
+
+  if (target > current) {
+    // Need to pull singers from other parts into this one
+    const needed = target - current;
+    const otherSingers = singers.filter(s => s.part !== partId);
+    // Score each: lower = better candidate to move here
+    otherSingers.sort((a, b) => {
+      const aScore = reallocationCost(a, part, partId);
+      const bScore = reallocationCost(b, part, partId);
+      return aScore - bScore;
+    });
+    for (let i = 0; i < Math.min(needed, otherSingers.length); i++) {
+      otherSingers[i].part = partId;
+    }
   } else {
-    // Lock to current count
-    partLocks[partId] = singers.filter(s => s.part === partId).length;
+    // Need to move singers out of this part
+    const excess = current - target;
+    const partSingers = singers.filter(s => s.part === partId);
+    // Score each: higher = better candidate to move away
+    // (reverse: best to move = lowest cost to go to another part)
+    const otherParts = activeParts.filter(p => p.id !== partId);
+    partSingers.sort((a, b) => {
+      const aMin = Math.min(...otherParts.map(p => reallocationCost(a, p, p.id)));
+      const bMin = Math.min(...otherParts.map(p => reallocationCost(b, p, p.id)));
+      return aMin - bMin; // easiest to move away first
+    });
+    for (let i = 0; i < Math.min(excess, partSingers.length); i++) {
+      // Assign to best other part
+      let bestPart = otherParts[0], bestScore = Infinity;
+      for (const op of otherParts) {
+        const s = reallocationCost(partSingers[i], op, op.id);
+        if (s < bestScore) { bestScore = s; bestPart = op; }
+      }
+      partSingers[i].part = bestPart.id;
+    }
   }
-  applyLocks();
-}
 
-function changeLockedCount(partId, delta) {
-  if (partLocks[partId] == null) return;
-  partLocks[partId] = Math.max(0, Math.min(singers.length, partLocks[partId] + delta));
-  applyLocks();
-}
-
-function applyLocks() {
-  reassignSingersWithLocks();
   updatePartMidpoints();
+  animateChoirTransitions(oldPartMap);
   buildMasterDisplay();
   updateChoirViz();
   updateDisplay();
   sendPartConfig();
 }
 
+function reallocationCost(singer, targetPart, targetPartId) {
+  if (!singer.range) return 50; // no range info = moderate cost
+  const singerLo = singer.range[0], singerHi = singer.range[1];
+  const partLo = targetPart.range[0], partHi = targetPart.range[1];
+
+  // Range overlap: how much of singer's range fits within part range
+  const overlap = Math.max(0, Math.min(singerHi, partHi) - Math.max(singerLo, partLo));
+  const singerSpan = singerHi - singerLo;
+  const overlapFraction = singerSpan > 0 ? overlap / singerSpan : 0;
+  const overlapCost = (1 - overlapFraction) * 30; // 0-30: higher = worse overlap
+
+  // Evenness: prefer moving to/from parts that would become more balanced
+  const counts = {};
+  for (const p of activeParts) counts[p.id] = 0;
+  for (const s of singers) counts[s.part] = (counts[s.part] || 0) + 1;
+  const avgCount = singers.length / activeParts.length;
+  const targetCount = counts[targetPartId] || 0;
+  const evennessCost = Math.abs(targetCount + 1 - avgCount) * 2; // cost of target being far from average
+
+  return overlapCost + evennessCost;
+}
+
 function resetAllocation() {
+  const oldPartMap = {};
+  for (const s of singers) oldPartMap[s.id] = s.part;
+
   partLocks = {};
   reassignSingers();
   updatePartMidpoints();
+  animateChoirTransitions(oldPartMap);
   buildMasterDisplay();
   updateChoirViz();
   updateDisplay();
@@ -863,46 +928,40 @@ function createPartColumn(part) {
   note.textContent = '';
   col.appendChild(note);
 
-  // Singer count with lock toggle (at the bottom)
+  // Singer count with +/- buttons (at the bottom)
   const countRow = document.createElement('div');
-  countRow.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:3px;margin-top:auto;';
+  countRow.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:4px;margin-top:auto;';
 
-  const isLocked = partLocks[part.id] != null;
-  if (isLocked) {
-    // Editable count with ± buttons
-    const minus = document.createElement('button');
-    minus.textContent = '−';
-    minus.style.cssText = 'font-size:0.65rem;padding:0 3px;background:#333;border:1px solid #555;border-radius:3px;color:#ccc;cursor:pointer;line-height:1;';
-    minus.onclick = () => changeLockedCount(part.id, -1);
-    countRow.appendChild(minus);
+  const currentCount = singers.filter(s => s.part === part.id).length;
 
-    const countInput = document.createElement('input');
-    countInput.type = 'number';
-    countInput.className = 'part-count';
-    countInput.value = partLocks[part.id];
-    countInput.min = 0;
-    countInput.max = singers.length;
-    countInput.style.cssText = 'width:28px;text-align:center;font-size:0.85rem;background:#1a1a2e;border:1px solid #555;border-radius:3px;color:inherit;padding:1px;';
-    countInput.onchange = (e) => { partLocks[part.id] = Math.max(0, Math.min(singers.length, parseInt(e.target.value) || 0)); applyLocks(); };
-    countRow.appendChild(countInput);
+  const minus = document.createElement('button');
+  minus.textContent = '−';
+  minus.style.cssText = 'font-size:0.7rem;padding:0 4px;background:transparent;border:none;color:rgba(255,255,255,0.25);cursor:pointer;line-height:1;font-weight:bold;';
+  minus.onmouseenter = () => { minus.style.color = 'rgba(255,255,255,0.7)'; };
+  minus.onmouseleave = () => { minus.style.color = 'rgba(255,255,255,0.25)'; };
+  minus.onclick = () => adjustPartCount(part.id, -1);
+  countRow.appendChild(minus);
 
-    const plus = document.createElement('button');
-    plus.textContent = '+';
-    plus.style.cssText = 'font-size:0.65rem;padding:0 3px;background:#333;border:1px solid #555;border-radius:3px;color:#ccc;cursor:pointer;line-height:1;';
-    plus.onclick = () => changeLockedCount(part.id, 1);
-    countRow.appendChild(plus);
-  } else {
-    const count = document.createElement('div');
-    count.className = 'part-count';
-    count.textContent = '0';
-    countRow.appendChild(count);
-  }
+  const countInput = document.createElement('input');
+  countInput.type = 'number';
+  countInput.className = 'part-count';
+  countInput.value = currentCount;
+  countInput.min = 0;
+  countInput.max = singers.length;
+  countInput.style.cssText = 'width:28px;text-align:center;font-size:1.2rem;font-weight:bold;background:transparent;border:none;color:inherit;padding:0;-moz-appearance:textfield;';
+  countInput.onchange = (e) => {
+    const val = Math.max(0, Math.min(singers.length, parseInt(e.target.value) || 0));
+    setPartCount(part.id, val);
+  };
+  countRow.appendChild(countInput);
 
-  const lockBtn = document.createElement('button');
-  lockBtn.textContent = isLocked ? '🔒' : '🔓';
-  lockBtn.style.cssText = 'font-size:0.6rem;padding:1px 3px;background:transparent;border:1px solid #555;border-radius:3px;color:#888;cursor:pointer;line-height:1;';
-  lockBtn.onclick = () => togglePartLock(part.id);
-  countRow.appendChild(lockBtn);
+  const plus = document.createElement('button');
+  plus.textContent = '+';
+  plus.style.cssText = 'font-size:0.7rem;padding:0 4px;background:transparent;border:none;color:rgba(255,255,255,0.25);cursor:pointer;line-height:1;font-weight:bold;';
+  plus.onmouseenter = () => { plus.style.color = 'rgba(255,255,255,0.7)'; };
+  plus.onmouseleave = () => { plus.style.color = 'rgba(255,255,255,0.25)'; };
+  plus.onclick = () => adjustPartCount(part.id, 1);
+  countRow.appendChild(plus);
 
   col.appendChild(countRow);
 
@@ -1828,7 +1887,7 @@ function createRoom() {
       for (const s of singers) counts[s.part] = (counts[s.part] || 0) + 1;
       for (const part of activeParts) {
         const el = getPartEl(part.id, 'part-count');
-        if (el) el.textContent = counts[part.id] || 0;
+        if (el) el.value = counts[part.id] || 0;
       }
       updateDisplay();
       updateChoirViz();
@@ -2049,6 +2108,27 @@ function updateChoirViz() {
       sq.style.boxShadow = `0 0 ${Math.round(a * 6)}px rgba(${r},${g},${b},${a * 0.6})`;
     }
   });
+}
+
+function animateChoirTransitions(oldPartMap) {
+  // For singers whose part changed, apply a 1-second CSS transition on the affected squares
+  const changedSingers = singers.filter(s => oldPartMap[s.id] && oldPartMap[s.id] !== s.part);
+  if (changedSingers.length === 0) return;
+
+  const squares = document.querySelectorAll('.choir-sq');
+  if (!squares.length) return;
+
+  // Add transition to all squares (it will only be visible on changed ones)
+  squares.forEach(sq => {
+    sq.style.transition = 'background 1s ease, box-shadow 1s ease';
+  });
+
+  // Remove transition after animation completes
+  setTimeout(() => {
+    squares.forEach(sq => {
+      sq.style.transition = '';
+    });
+  }, 1100);
 }
 
 const _colorCache = {};
