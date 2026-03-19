@@ -98,7 +98,12 @@
   <div id="choirVizSection" style="margin-top:12px;">
     <div style="display:flex;align-items:center;gap:8px;">
       <div id="choirSizeLabel" style="font-size:0.85rem;color:#888;white-space:nowrap;">Choir Size: 0</div>
-      <button onclick="resetAllocation()" style="font-size:0.7rem;padding:2px 8px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;position:relative;z-index:20;">Reset part allocation</button>
+      <button onclick="allocateEvenSplit()" style="font-size:0.7rem;padding:2px 8px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;position:relative;z-index:20;">
+        <span id="evenSplitLabel">Even split:</span>
+      </button>
+      <button onclick="allocateStrictRange()" style="font-size:0.7rem;padding:2px 8px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;position:relative;z-index:20;">
+        <span id="strictRangeLabel">Vocal range:</span>
+      </button>
     </div>
     <div id="choirSquares" style="display:flex;margin-top:6px;"></div>
   </div>
@@ -304,6 +309,32 @@ function getPartConfig(n) {
   };
   return configs[n] || configs[4];
 }
+
+// Preset vocal ranges for all 12 voice types (MIDI note numbers)
+// Based on standard choral ranges: Bass E2-E4, Baritone A2-A4, Tenor C3-C5,
+// Alto F3-F5, Mezzo A3-A5, Soprano C4-C6. I/II splits divide each in half.
+const VOCAL_RANGES = {
+  bass:      [40, 64],  // E2-E4
+  bass2:     [40, 52],  // E2-E3 (low half)
+  bass1:     [48, 64],  // C3-E4 (high half)
+  baritone:  [45, 69],  // A2-A4
+  baritone2: [45, 57],  // A2-A3 (low half)
+  baritone1: [52, 69],  // E3-A4 (high half)
+  tenor:     [48, 72],  // C3-C5
+  tenor2:    [48, 60],  // C3-C4 (low half)
+  tenor1:    [55, 72],  // G3-C5 (high half)
+  alto:      [53, 77],  // F3-F5
+  alto2:     [53, 65],  // F3-F4 (low half)
+  alto1:     [60, 77],  // C4-F5 (high half)
+  mezzo:     [57, 81],  // A3-A5
+  mezzo2:    [57, 69],  // A3-A4 (low half)
+  mezzo1:    [64, 81],  // E4-A5 (high half)
+  soprano:   [60, 84],  // C4-C6
+  soprano2:  [60, 72],  // C4-C5 (low half)
+  soprano1:  [67, 84],  // G4-C6 (high half)
+  treble:    [55, 84],  // G3-C6
+  unison:    [40, 84],  // E2-C6
+};
 
 function computePartRanges(parts) {
   // Distribute ranges evenly across the vocal range (MIDI 36-84)
@@ -813,18 +844,119 @@ function reallocationCost(singer, targetPart, targetPartId) {
   return overlapCost + evennessCost;
 }
 
-function resetAllocation() {
+function allocateEvenSplit() {
+  if (singers.length === 0) return;
   const oldPartMap = {};
   for (const s of singers) oldPartMap[s.id] = s.part;
 
+  // Sort singers by vocal midrange
+  const sorted = [...singers].sort((a, b) => {
+    const aMid = a.range ? (a.range[0] + a.range[1]) / 2 : 60;
+    const bMid = b.range ? (b.range[0] + b.range[1]) / 2 : 60;
+    return aMid - bMid;
+  });
+
+  const n = activeParts.length;
+  for (let i = 0; i < sorted.length; i++) {
+    const partIdx = Math.min(Math.floor(i / (sorted.length / n)), n - 1);
+    sorted[i].part = activeParts[partIdx].id;
+  }
+
   partLocks = {};
-  reassignSingers();
   updatePartMidpoints();
   animateChoirTransitions(oldPartMap);
   buildMasterDisplay();
   updateChoirViz();
   updateDisplay();
   sendPartConfig();
+}
+
+function allocateStrictRange() {
+  if (singers.length === 0) return;
+  const oldPartMap = {};
+  for (const s of singers) oldPartMap[s.id] = s.part;
+
+  // Assign each singer to the part whose VOCAL_RANGES preset is closest
+  for (const singer of singers) {
+    if (!singer.range) continue;
+    const singerMid = (singer.range[0] + singer.range[1]) / 2;
+    let bestPart = activeParts[0], bestScore = Infinity;
+    for (const part of activeParts) {
+      const preset = VOCAL_RANGES[part.id];
+      if (!preset) continue;
+      const presetMid = (preset[0] + preset[1]) / 2;
+      // Score by overlap fraction with preset range
+      const overlap = Math.max(0, Math.min(singer.range[1], preset[1]) - Math.max(singer.range[0], preset[0]));
+      const singerSpan = singer.range[1] - singer.range[0];
+      const overlapFrac = singerSpan > 0 ? overlap / singerSpan : 0;
+      const score = (1 - overlapFrac) * 20 + Math.abs(singerMid - presetMid);
+      if (score < bestScore) { bestScore = score; bestPart = part; }
+    }
+    singer.part = bestPart.id;
+  }
+
+  partLocks = {};
+  updatePartMidpoints();
+  animateChoirTransitions(oldPartMap);
+  buildMasterDisplay();
+  updateChoirViz();
+  updateDisplay();
+  sendPartConfig();
+}
+
+function getEvenSplitPreview() {
+  if (singers.length === 0) return activeParts.map(() => 0);
+  const sorted = [...singers].sort((a, b) => {
+    const aMid = a.range ? (a.range[0] + a.range[1]) / 2 : 60;
+    const bMid = b.range ? (b.range[0] + b.range[1]) / 2 : 60;
+    return aMid - bMid;
+  });
+  const n = activeParts.length;
+  const counts = new Array(n).fill(0);
+  for (let i = 0; i < sorted.length; i++) {
+    const idx = Math.min(Math.floor(i / (sorted.length / n)), n - 1);
+    counts[idx]++;
+  }
+  return counts;
+}
+
+function getStrictRangePreview() {
+  if (singers.length === 0) return activeParts.map(() => 0);
+  const counts = new Array(activeParts.length).fill(0);
+  for (const singer of singers) {
+    if (!singer.range) continue;
+    const singerMid = (singer.range[0] + singer.range[1]) / 2;
+    let bestIdx = 0, bestScore = Infinity;
+    for (let i = 0; i < activeParts.length; i++) {
+      const preset = VOCAL_RANGES[activeParts[i].id];
+      if (!preset) continue;
+      const presetMid = (preset[0] + preset[1]) / 2;
+      const overlap = Math.max(0, Math.min(singer.range[1], preset[1]) - Math.max(singer.range[0], preset[0]));
+      const singerSpan = singer.range[1] - singer.range[0];
+      const overlapFrac = singerSpan > 0 ? overlap / singerSpan : 0;
+      const score = (1 - overlapFrac) * 20 + Math.abs(singerMid - presetMid);
+      if (score < bestScore) { bestScore = score; bestIdx = i; }
+    }
+    counts[bestIdx]++;
+  }
+  return counts;
+}
+
+function updateAllocButtons() {
+  const evenCounts = getEvenSplitPreview();
+  const strictCounts = getStrictRangePreview();
+  const evenLabel = document.getElementById('evenSplitLabel');
+  const strictLabel = document.getElementById('strictRangeLabel');
+  if (evenLabel) {
+    evenLabel.innerHTML = 'Even split: ' + evenCounts.map((c, i) =>
+      `<span style="color:${activeParts[i].color};font-weight:bold;">${c}</span>`
+    ).join(', ');
+  }
+  if (strictLabel) {
+    strictLabel.innerHTML = 'Vocal range: ' + strictCounts.map((c, i) =>
+      `<span style="color:${activeParts[i].color};font-weight:bold;">${c}</span>`
+    ).join(', ');
+  }
 }
 
 function sendPartConfig() {
@@ -2026,6 +2158,8 @@ function buildChoirSquares() {
 function updateChoirViz() {
   const sizeLabel = document.getElementById('choirSizeLabel');
   if (sizeLabel) sizeLabel.textContent = `Choir Size: ${singers.length}`;
+
+  updateAllocButtons();
 
   if (!document.querySelectorAll('.choir-sq').length) buildChoirSquares();
 
