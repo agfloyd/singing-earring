@@ -1050,6 +1050,9 @@ function createPartColumn(part) {
     input.style.cssText = 'background:transparent;border:1px solid #555;border-radius:4px;color:inherit;font-size:inherit;font-weight:inherit;text-align:center;width:90%;padding:2px;outline:none;text-transform:uppercase;letter-spacing:0.1em;';
     input.onblur = () => {
       part.label = input.value || part.label;
+      // Update shortLabel: first letter(s) that make it unique, or first 3 chars
+      const newShort = part.label.length <= 3 ? part.label : part.label.substring(0, 3);
+      part.shortLabel = newShort;
       label.textContent = part.label;
       label.style.display = '';
       input.remove();
