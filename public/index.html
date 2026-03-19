@@ -17,10 +17,10 @@
   .code-input::placeholder { color: #555; letter-spacing: 0.15em; font-size: 1.2rem; }
   .parts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
   .part-btn { padding: 20px; border-radius: 12px; border: 3px solid transparent; font-size: 1.2rem; font-weight: bold; cursor: pointer; transition: all 0.15s; }
-  .part-btn.soprano { background: rgba(255,107,157,0.15); color: #ff6b9d; }
-  .part-btn.alto { background: rgba(192,132,252,0.15); color: #c084fc; }
-  .part-btn.tenor { background: rgba(96,165,250,0.15); color: #60a5fa; }
-  .part-btn.bass { background: rgba(52,211,153,0.15); color: #34d399; }
+  .part-btn.bass { background: rgba(255,107,107,0.15); color: #ff6b6b; }
+  .part-btn.tenor { background: rgba(255,200,87,0.15); color: #ffc857; }
+  .part-btn.alto { background: rgba(96,165,250,0.15); color: #60a5fa; }
+  .part-btn.soprano { background: rgba(192,132,252,0.15); color: #c084fc; }
   .part-btn.selected { border-color: currentColor; transform: scale(1.05); }
   .join-btn { background: #e94560; color: white; border: none; padding: 16px 32px; border-radius: 12px; font-size: 1.2rem; font-weight: bold; cursor: pointer; width: 100%; opacity: 0.4; pointer-events: none; transition: opacity 0.2s; }
   .join-btn.ready { opacity: 1; pointer-events: auto; }
@@ -51,23 +51,23 @@
   /* Singing screen */
   #singScreen { display: none; width: 100%; max-width: 360px; text-align: center; }
   .current-note { font-size: 6rem; font-weight: bold; line-height: 1; margin: 10px 0; transition: color 0.1s; height: 6rem; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-  .current-note.soprano { color: #ff6b9d; }
-  .current-note.alto { color: #c084fc; }
-  .current-note.tenor { color: #60a5fa; }
-  .current-note.bass { color: #34d399; }
+  .current-note.bass { color: #ff6b6b; }
+  .current-note.tenor { color: #ffc857; }
+  .current-note.alto { color: #60a5fa; }
+  .current-note.soprano { color: #c084fc; }
   .current-note.silent { color: #444; font-size: 3rem; }
   .part-label { font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.2em; font-weight: bold; }
-  .part-label.soprano { color: #ff6b9d; }
-  .part-label.alto { color: #c084fc; }
-  .part-label.tenor { color: #60a5fa; }
-  .part-label.bass { color: #34d399; }
+  .part-label.bass { color: #ff6b6b; }
+  .part-label.tenor { color: #ffc857; }
+  .part-label.alto { color: #60a5fa; }
+  .part-label.soprano { color: #c084fc; }
 
   .part-switcher { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }
   .part-switch-btn { padding: 6px 12px; border-radius: 6px; border: 2px solid transparent; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: all 0.15s; }
-  .part-switch-btn.soprano { background: rgba(255,107,157,0.1); color: #ff6b9d; }
-  .part-switch-btn.alto { background: rgba(192,132,252,0.1); color: #c084fc; }
-  .part-switch-btn.tenor { background: rgba(96,165,250,0.1); color: #60a5fa; }
-  .part-switch-btn.bass { background: rgba(52,211,153,0.1); color: #34d399; }
+  .part-switch-btn.bass { background: rgba(255,107,107,0.1); color: #ff6b6b; }
+  .part-switch-btn.tenor { background: rgba(255,200,87,0.1); color: #ffc857; }
+  .part-switch-btn.alto { background: rgba(96,165,250,0.1); color: #60a5fa; }
+  .part-switch-btn.soprano { background: rgba(192,132,252,0.1); color: #c084fc; }
   .part-switch-btn.active { border-color: currentColor; }
 
   /* Syllable display */
@@ -123,10 +123,10 @@
 
   <div style="font-size:0.85rem;color:#666;margin-bottom:6px;">Or start with a preset category:</div>
   <div class="parts" id="parts">
-    <button class="part-btn soprano" data-part="soprano" onclick="selectPart(this)">Soprano</button>
-    <button class="part-btn alto" data-part="alto" onclick="selectPart(this)">Alto</button>
-    <button class="part-btn tenor" data-part="tenor" onclick="selectPart(this)">Tenor</button>
     <button class="part-btn bass" data-part="bass" onclick="selectPart(this)">Bass</button>
+    <button class="part-btn tenor" data-part="tenor" onclick="selectPart(this)">Tenor</button>
+    <button class="part-btn alto" data-part="alto" onclick="selectPart(this)">Alto</button>
+    <button class="part-btn soprano" data-part="soprano" onclick="selectPart(this)">Soprano</button>
   </div>
 
   <button class="join-btn" id="joinBtn" onclick="joinRoom()">Join</button>
@@ -139,11 +139,12 @@
 </div>
 
 <div id="singScreen">
-  <div class="range-row" style="margin-top:0;">
+  <div class="part-label" id="partLabel" style="font-size:2.4rem;"></div>
+  <div class="range-row" style="margin-top:4px;font-size:1.5rem;">
     Range:
-    <input type="text" class="range-field" id="singRangeLow" placeholder="—" readonly onclick="openSingRangePicker('low')" ondblclick="makeRangeEditable(this)" autocomplete="off">
+    <input type="text" class="range-field" id="singRangeLow" placeholder="—" readonly onclick="openSingRangePicker('low')" ondblclick="makeRangeEditable(this)" autocomplete="off" style="font-size:1.3rem;width:70px;">
     to
-    <input type="text" class="range-field" id="singRangeHigh" placeholder="—" readonly onclick="openSingRangePicker('high')" ondblclick="makeRangeEditable(this)" autocomplete="off">
+    <input type="text" class="range-field" id="singRangeHigh" placeholder="—" readonly onclick="openSingRangePicker('high')" ondblclick="makeRangeEditable(this)" autocomplete="off" style="font-size:1.3rem;width:70px;">
   </div>
   <div class="range-piano-popup" id="singRangePianoPopup">
     <div class="range-piano-controls">
@@ -153,12 +154,12 @@
     </div>
     <div class="range-piano-hint" id="singRangePianoHint"></div>
   </div>
-  <div class="part-label" id="partLabel"></div>
+  <div style="font-size:0.85rem;color:#666;margin:4px 0 6px;">Click above to adjust range, or switch to a preset:</div>
   <div class="part-switcher" id="partSwitcher">
-    <button class="part-switch-btn soprano" onclick="switchPart('soprano')">S</button>
-    <button class="part-switch-btn alto" onclick="switchPart('alto')">A</button>
-    <button class="part-switch-btn tenor" onclick="switchPart('tenor')">T</button>
     <button class="part-switch-btn bass" onclick="switchPart('bass')">B</button>
+    <button class="part-switch-btn tenor" onclick="switchPart('tenor')">T</button>
+    <button class="part-switch-btn alto" onclick="switchPart('alto')">A</button>
+    <button class="part-switch-btn soprano" onclick="switchPart('soprano')">S</button>
   </div>
   <div class="syllable-display" id="syllableDisplay">Aah</div>
   <div class="current-note silent" id="noteDisplay">---</div>
@@ -178,7 +179,7 @@
 
 <script>
 const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-let PART_COLORS = { soprano: '#ff6b9d', alto: '#c084fc', tenor: '#60a5fa', bass: '#34d399' };
+let PART_COLORS = { bass: '#ff6b6b', tenor: '#ffc857', alto: '#60a5fa', soprano: '#c084fc' };
 let RANGE = {
   soprano: [60, 79],
   alto:    [53, 72],
@@ -655,6 +656,8 @@ function switchPart(part) {
   if (r) {
     customRange.low = r[0];
     customRange.high = r[1];
+    document.getElementById('singRangeLow').value = noteName(customRange.low);
+    document.getElementById('singRangeHigh').value = noteName(customRange.high);
   }
   updatePartDisplay();
   buildMiniPiano();
