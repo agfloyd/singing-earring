@@ -109,11 +109,7 @@
   </div>
 </div>
 
-<div id="midiSection" class="section" style="display:none">
-  <h2>MIDI Input</h2>
-  <select id="midiSelect" class="midi-select"><option value="">No MIDI devices found</option></select>
-  <div class="midi-status" id="midiStatus">Requesting MIDI access...</div>
-</div>
+<!-- MIDI section removed; dropdown moved into keyboard section row -->
 
 <div id="controlsSection" class="section" style="display:none">
   <h2>Controls</h2>
@@ -202,7 +198,10 @@
 </div>
 
 <div id="keyboardSection" class="section" style="display:none">
-  <div style="display:flex;justify-content:center;margin-bottom:6px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+    <select id="midiSelect" class="midi-select" style="font-size:0.75rem;padding:3px 6px;max-width:200px;"><option value="">No MIDI devices found</option></select>
+    <div id="midiStatus" style="font-size:0.7rem;color:#666;"></div>
+    <div style="flex:1;"></div>
     <div class="toggle-switch on" id="qwertyToggle" onclick="toggleQwerty()">
       <div class="toggle-knob"></div>
       <span class="toggle-label">QWERTY <span class="syl-key">⇪</span></span>
@@ -2003,7 +2002,6 @@ function createRoom() {
       document.getElementById('singerUrl').textContent = 'Singers go to: ' + msg.ip + ':' + msg.port;
       document.getElementById('setup').style.display = 'none';
       document.getElementById('roomInfo').style.display = '';
-      document.getElementById('midiSection').style.display = '';
       document.getElementById('controlsSection').style.display = '';
       document.getElementById('keyboardSection').style.display = '';
       initParts(numParts);
