@@ -26,7 +26,7 @@
   .part-column .part-count { font-size: 1.2rem; font-weight: bold; }
   .part-column .part-count::-webkit-inner-spin-button,
   .part-column .part-count::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-  .part-column .part-syllable { font-size: 1.8rem; font-weight: bold; margin: 6px 0 4px; height: 2.2rem; overflow: hidden; }
+  .part-column .part-syllable { font-size: 1.8rem; font-weight: bold; overflow: hidden; }
   .part-column .part-note { font-size: 1.8rem; font-weight: 600; height: 2.2rem; overflow: hidden; opacity: 0.7; }
   .part-column .vol-bar-wrap { position: absolute; top: 8px; bottom: 8px; right: 6px; width: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
   .part-column .vol-bar { position: absolute; bottom: 0; width: 100%; border-radius: 4px; transition: height 0.1s; }
@@ -111,23 +111,58 @@
 
 <!-- MIDI section removed; dropdown moved into keyboard section row -->
 
+<div id="keyboardSection" class="section" style="display:none">
+  <div class="piano-wrapper">
+    <div class="piano" id="piano"></div>
+    <div class="range-indicators" id="rangeIndicators"></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;margin-top:6px;">
+    <select id="midiSelect" class="midi-select" style="font-size:0.75rem;padding:3px 6px;max-width:200px;"><option value="">No MIDI devices found</option></select>
+    <div id="midiStatus" style="font-size:0.7rem;color:#666;"></div>
+    <div style="flex:1;"></div>
+    <div class="toggle-switch on" id="qwertyToggle" onclick="toggleQwerty()">
+      <div class="toggle-knob"></div>
+      <span class="toggle-label">QWERTY <span class="syl-key">⇪</span></span>
+    </div>
+  </div>
+</div>
+
+<div id="autoVoicingControls" class="section" style="display:none">
+  <h2>Auto Voicing</h2>
+  <div style="display:flex;gap:20px;align-items:flex-start;">
+    <div id="autoControlsLeft" style="flex-shrink:0;">
+      <div class="controls-row" style="gap:16px;">
+        <div class="toggle-switch on" id="rootInBassToggle" onclick="toggleRootInBass()" style="min-width:140px;">
+          <div class="toggle-knob"></div>
+          <span class="toggle-label">Root in Bass</span>
+        </div>
+      </div>
+      <div id="chordDisplay" style="font-size:2.5rem;font-weight:bold;color:#fbbf24;margin-top:12px;min-height:3rem;"></div>
+      <div id="degreeHints" style="font-size:0.85rem;color:#666;margin-top:8px;">
+        Press 1–9 for scale degrees. Hold `=dim, 1=aug, -=minor, ==major, [=7, ]=maj7, \=add9
+      </div>
+    </div>
+    <div id="staffContainer" style="flex:1;min-width:0;"></div>
+  </div>
+</div>
+
 <div id="controlsSection" class="section" style="display:none">
   <h2>Controls</h2>
   <div class="controls-row">
-    <div class="syl-btn active" data-idx="0" onclick="setSyllable(0)">
-      <input class="syl-input" type="text" maxlength="6" value="Aah" data-idx="0"><span class="syl-key">A</span>
+    <div class="syl-btn" data-idx="0" onclick="setSyllable(0)">
+      <input class="syl-input" type="text" maxlength="6" value="Shh" data-idx="0"><span class="syl-key">Z</span>
     </div>
     <div class="syl-btn" data-idx="1" onclick="setSyllable(1)">
-      <input class="syl-input" type="text" maxlength="6" value="Mmm" data-idx="1"><span class="syl-key">M</span>
+      <input class="syl-input" type="text" maxlength="6" value="Bum" data-idx="1"><span class="syl-key">X</span>
     </div>
-    <div class="syl-btn" data-idx="2" onclick="setSyllable(2)">
-      <input class="syl-input" type="text" maxlength="6" value="Hoo" data-idx="2"><span class="syl-key">G</span>
+    <div class="syl-btn active" data-idx="2" onclick="setSyllable(2)">
+      <input class="syl-input" type="text" maxlength="6" value="Ooo" data-idx="2"><span class="syl-key">V</span>
     </div>
     <div class="syl-btn" data-idx="3" onclick="setSyllable(3)">
-      <input class="syl-input" type="text" maxlength="6" value="Bum" data-idx="3"><span class="syl-key">B</span>
+      <input class="syl-input" type="text" maxlength="6" value="Nah" data-idx="3"><span class="syl-key">N</span>
     </div>
     <div class="syl-btn" data-idx="4" onclick="setSyllable(4)">
-      <input class="syl-input" type="text" maxlength="6" value="Shh" data-idx="4"><span class="syl-key">S</span>
+      <input class="syl-input" type="text" maxlength="6" value="Mmm" data-idx="4"><span class="syl-key">M</span>
     </div>
     <div class="bpm-control" id="bpmControl" style="display:none">
       <button onclick="adjustBpm(-5)">&lt; <span class="syl-key">,</span></button>
@@ -175,41 +210,6 @@
         <option value="locrian" style="color:#888;">Locrian</option>
       </select>
     </label>
-  </div>
-</div>
-
-<div id="autoVoicingControls" class="section" style="display:none">
-  <h2>Auto Voicing</h2>
-  <div style="display:flex;gap:20px;align-items:flex-start;">
-    <div id="autoControlsLeft" style="flex-shrink:0;">
-      <div class="controls-row" style="gap:16px;">
-        <div class="toggle-switch on" id="rootInBassToggle" onclick="toggleRootInBass()" style="min-width:140px;">
-          <div class="toggle-knob"></div>
-          <span class="toggle-label">Root in Bass</span>
-        </div>
-      </div>
-      <div id="chordDisplay" style="font-size:2.5rem;font-weight:bold;color:#fbbf24;margin-top:12px;min-height:3rem;"></div>
-      <div id="degreeHints" style="font-size:0.85rem;color:#666;margin-top:8px;">
-        Press 1–9 for scale degrees. Hold `=dim, 1=aug, -=minor, ==major, [=7, ]=maj7, \=add9
-      </div>
-    </div>
-    <div id="staffContainer" style="flex:1;min-width:0;"></div>
-  </div>
-</div>
-
-<div id="keyboardSection" class="section" style="display:none">
-  <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-    <select id="midiSelect" class="midi-select" style="font-size:0.75rem;padding:3px 6px;max-width:200px;"><option value="">No MIDI devices found</option></select>
-    <div id="midiStatus" style="font-size:0.7rem;color:#666;"></div>
-    <div style="flex:1;"></div>
-    <div class="toggle-switch on" id="qwertyToggle" onclick="toggleQwerty()">
-      <div class="toggle-knob"></div>
-      <span class="toggle-label">QWERTY <span class="syl-key">⇪</span></span>
-    </div>
-  </div>
-  <div class="piano-wrapper">
-    <div class="piano" id="piano"></div>
-    <div class="range-indicators" id="rangeIndicators"></div>
   </div>
 </div>
 
@@ -433,16 +433,18 @@ let lastAssignments = {};        // {singerId: midi} — last sent to singers
 let masterPulseTimer = null;
 
 // Syllable system — always per-part
-let activeSyllable = 0;
+let activeSyllable = 2; // default to Ooo
 const syllables = [
-  { text: 'Aah', pulse: false },
-  { text: 'Mmm', pulse: false },
-  { text: 'Hoo', pulse: false },
-  { text: 'Bum', pulse: true },
   { text: 'Shh', pulse: false, percussive: true },
+  { text: 'Bum', pulse: true },
+  { text: 'Ooo', pulse: false },
+  { text: 'Nah', pulse: false },
+  { text: 'Mmm', pulse: false },
 ];
 let pulseBpm = 100;
 let partSyllables = {};          // {partId: syllableIndex}
+let syllableLocks = {};          // {partId: true/false} — locked syllable per part
+let sylLockOverride = null;      // partId being temporarily overridden via single-modifier
 
 // Volume per part (0–100, default 50)
 let partVolumes = {};            // {partId: volume}
@@ -666,6 +668,7 @@ function singerCountForPart(partId) {
 function initParts(n) {
   numParts = Math.max(1, Math.min(12, n));
   partLocks = {}; // Reset locks when parts change
+  syllableLocks = {}; // Reset syllable locks too
   const oldParts = activeParts;
   activeParts = getPartConfig(numParts);
   computePartRanges(activeParts);
@@ -1038,33 +1041,173 @@ function createPartColumn(part) {
   col.dataset.part = part.id;
   col.style.color = part.color;
 
-  // Part label (hidden for 1-part mode, editable on click)
+  // Part label row: label + dropdown caret
+  const labelRow = document.createElement('div');
+  labelRow.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:0;position:relative;';
+
   const label = document.createElement('div');
   label.className = 'part-label';
   label.textContent = part.label;
   label.style.cursor = 'pointer';
-  label.onclick = () => {
+
+  // Inline editing on label click
+  const startEditing = () => {
     const input = document.createElement('input');
     input.type = 'text';
     input.value = part.label;
     input.style.cssText = 'background:transparent;border:1px solid #555;border-radius:4px;color:inherit;font-size:inherit;font-weight:inherit;text-align:center;width:90%;padding:2px;outline:none;text-transform:uppercase;letter-spacing:0.1em;';
     input.onblur = () => {
       part.label = input.value || part.label;
-      // Update shortLabel: first letter(s) that make it unique, or first 3 chars
       const newShort = part.label.length <= 3 ? part.label : part.label.substring(0, 3);
       part.shortLabel = newShort;
       label.textContent = part.label;
       label.style.display = '';
+      caret.style.display = '';
       input.remove();
       sendPartConfig();
     };
     input.onkeydown = (e) => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = part.label; input.blur(); } };
     label.style.display = 'none';
-    label.parentNode.insertBefore(input, label.nextSibling);
+    caret.style.display = 'none';
+    labelRow.insertBefore(input, label.nextSibling);
     input.focus();
     input.select();
   };
-  col.appendChild(label);
+  label.onclick = startEditing;
+  labelRow.appendChild(label);
+
+  // Dropdown caret
+  const caret = document.createElement('span');
+  caret.textContent = '▾';
+  caret.style.cssText = `font-size:1em;cursor:pointer;color:${part.color};opacity:0.35;margin-left:2px;user-select:none;`;
+  caret.onmouseenter = () => { caret.style.opacity = '0.8'; };
+  caret.onmouseleave = () => { caret.style.opacity = '0.35'; };
+  caret.onclick = (e) => {
+    e.stopPropagation();
+    // Remove any existing dropdown
+    const old = col.querySelector('.part-preset-dropdown');
+    if (old) { old.remove(); return; }
+    // Close other dropdowns
+    document.querySelectorAll('.part-preset-dropdown').forEach(d => d.remove());
+
+    const PRESETS = [
+      { label: 'Bass', subs: [
+        { label: 'Bass', key: 'bass' },
+        { label: 'Bass I', key: 'bass1' },
+        { label: 'Bass II', key: 'bass2' },
+      ]},
+      { label: 'Baritone', subs: [
+        { label: 'Baritone', key: 'baritone' },
+        { label: 'Baritone I', key: 'baritone1' },
+        { label: 'Baritone II', key: 'baritone2' },
+      ]},
+      { label: 'Tenor', subs: [
+        { label: 'Tenor', key: 'tenor' },
+        { label: 'Tenor I', key: 'tenor1' },
+        { label: 'Tenor II', key: 'tenor2' },
+      ]},
+      { label: 'Alto', subs: [
+        { label: 'Alto', key: 'alto' },
+        { label: 'Alto I', key: 'alto1' },
+        { label: 'Alto II', key: 'alto2' },
+      ]},
+      { label: 'Mezzo-Soprano', subs: [
+        { label: 'Mezzo-Soprano', key: 'mezzo' },
+        { label: 'Mezzo-Soprano I', key: 'mezzo1' },
+        { label: 'Mezzo-Soprano II', key: 'mezzo2' },
+      ]},
+      { label: 'Soprano', subs: [
+        { label: 'Soprano', key: 'soprano' },
+        { label: 'Soprano I', key: 'soprano1' },
+        { label: 'Soprano II', key: 'soprano2' },
+      ]},
+      { label: 'Custom', subs: null },
+    ];
+
+    const itemStyle = 'padding:6px 12px;cursor:pointer;font-size:0.75rem;color:#ccc;text-align:left;white-space:nowrap;';
+    const dropdownStyle = 'background:#1e1e2e;border:1px solid #444;border-radius:6px;z-index:100;min-width:130px;overflow:visible;box-shadow:0 4px 12px rgba(0,0,0,0.5);';
+
+    function applyPreset(key, presetLabel) {
+      part.label = presetLabel;
+      part.shortLabel = presetLabel.length <= 3 ? presetLabel : presetLabel.substring(0, 3);
+      label.textContent = part.label;
+      const range = VOCAL_RANGES[key];
+      if (range) {
+        part.paradigmaticRange = [...range];
+        const rangeInputs = col.querySelectorAll('.part-range-field');
+        if (rangeInputs.length === 2) {
+          rangeInputs[0].value = noteName(range[0]);
+          rangeInputs[1].value = noteName(range[1]);
+        }
+      }
+      sendPartConfig();
+      updateAllocButtons();
+      buildRangeIndicators();
+    }
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'part-preset-dropdown';
+    dropdown.style.cssText = 'position:absolute;top:100%;left:50%;transform:translateX(-50%);' + dropdownStyle;
+
+    for (const preset of PRESETS) {
+      const item = document.createElement('div');
+      item.style.cssText = itemStyle + 'display:flex;align-items:center;justify-content:space-between;position:relative;';
+      const textSpan = document.createElement('span');
+      textSpan.textContent = preset.label;
+      item.appendChild(textSpan);
+
+      if (preset.subs) {
+        const arrow = document.createElement('span');
+        arrow.textContent = '▸';
+        arrow.style.cssText = 'margin-left:8px;opacity:0.5;font-size:0.65rem;';
+        item.appendChild(arrow);
+
+        // Sub-menu
+        const subMenu = document.createElement('div');
+        subMenu.className = 'part-preset-dropdown';
+        subMenu.style.cssText = 'position:absolute;left:100%;top:-1px;display:none;' + dropdownStyle;
+        for (const sub of preset.subs) {
+          const subItem = document.createElement('div');
+          subItem.textContent = sub.label;
+          subItem.style.cssText = itemStyle;
+          subItem.onmouseenter = () => { subItem.style.background = 'rgba(255,255,255,0.1)'; };
+          subItem.onmouseleave = () => { subItem.style.background = 'transparent'; };
+          subItem.onclick = (ev) => {
+            ev.stopPropagation();
+            dropdown.remove();
+            applyPreset(sub.key, sub.label);
+          };
+          subMenu.appendChild(subItem);
+        }
+        item.appendChild(subMenu);
+        item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.1)'; subMenu.style.display = 'block'; };
+        item.onmouseleave = () => { item.style.background = 'transparent'; subMenu.style.display = 'none'; };
+      } else {
+        item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.1)'; };
+        item.onmouseleave = () => { item.style.background = 'transparent'; };
+        item.onclick = (ev) => {
+          ev.stopPropagation();
+          dropdown.remove();
+          startEditing();
+        };
+      }
+      dropdown.appendChild(item);
+    }
+
+    labelRow.appendChild(dropdown);
+
+    // Close dropdown on outside click
+    const closeHandler = (ev) => {
+      if (!dropdown.contains(ev.target) && ev.target !== caret) {
+        dropdown.remove();
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler), 0);
+  };
+  labelRow.appendChild(caret);
+
+  col.appendChild(labelRow);
 
   // Modifier key hint
   const modifier = document.createElement('div');
@@ -1086,11 +1229,82 @@ function createPartColumn(part) {
   modifier.textContent = modText;
   col.appendChild(modifier);
 
-  // Syllable display
+  // Syllable display with dropdown caret
+  const sylRow = document.createElement('div');
+  sylRow.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:0;position:relative;margin:6px 0 4px;height:2.2rem;';
+
+  // Syllable lock icon
+  const sylLock = document.createElement('span');
+  sylLock.className = 'syl-lock-icon';
+  const isLocked = syllableLocks[part.id];
+  sylLock.innerHTML = isLocked ? lockSVG(part.color) : unlockSVG(part.color);
+  sylLock.style.cssText = `cursor:pointer;opacity:${isLocked ? '0.6' : '0.2'};margin-right:3px;display:flex;align-items:center;user-select:none;`;
+  sylLock.onmouseenter = () => { sylLock.style.opacity = '0.8'; };
+  sylLock.onmouseleave = () => { sylLock.style.opacity = syllableLocks[part.id] ? '0.6' : '0.2'; };
+  sylLock.onclick = (e) => {
+    e.stopPropagation();
+    syllableLocks[part.id] = !syllableLocks[part.id];
+    sylLock.innerHTML = syllableLocks[part.id] ? lockSVG(part.color) : unlockSVG(part.color);
+    sylLock.style.opacity = syllableLocks[part.id] ? '0.6' : '0.2';
+  };
+  sylRow.appendChild(sylLock);
+
   const syl = document.createElement('div');
   syl.className = 'part-syllable';
+  syl.style.cssText = 'font-size:1.8rem;font-weight:bold;overflow:hidden;';
   syl.textContent = '';
-  col.appendChild(syl);
+  sylRow.appendChild(syl);
+
+  const sylCaret = document.createElement('span');
+  sylCaret.textContent = '▾';
+  sylCaret.style.cssText = `font-size:1rem;cursor:pointer;color:${part.color};opacity:0.35;margin-left:2px;user-select:none;`;
+  sylCaret.onmouseenter = () => { sylCaret.style.opacity = '0.8'; };
+  sylCaret.onmouseleave = () => { sylCaret.style.opacity = '0.35'; };
+  sylCaret.onclick = (e) => {
+    e.stopPropagation();
+    const old = col.querySelector('.syl-preset-dropdown');
+    if (old) { old.remove(); return; }
+    document.querySelectorAll('.syl-preset-dropdown').forEach(d => d.remove());
+
+    const SYL_OPTIONS = [
+      ...syllables.map((s, i) => ({ label: s.text, index: i })),
+      { label: 'None', index: -1 },
+    ];
+
+    const dd = document.createElement('div');
+    dd.className = 'syl-preset-dropdown';
+    dd.style.cssText = 'position:absolute;top:100%;left:50%;transform:translateX(-50%);background:#1e1e2e;border:1px solid #444;border-radius:6px;z-index:100;min-width:80px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.5);';
+
+    for (const opt of SYL_OPTIONS) {
+      const item = document.createElement('div');
+      item.textContent = opt.label;
+      const isActive = (partSyllables[part.id] || 0) === opt.index || (opt.index === -1 && partSyllables[part.id] === -1);
+      item.style.cssText = 'padding:6px 12px;cursor:pointer;font-size:0.75rem;color:' + (isActive ? '#fff' : '#ccc') + ';text-align:left;white-space:nowrap;' + (isActive ? 'background:rgba(255,255,255,0.1);' : '');
+      item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.15)'; };
+      item.onmouseleave = () => { item.style.background = isActive ? 'rgba(255,255,255,0.1)' : 'transparent'; };
+      item.onclick = (ev) => {
+        ev.stopPropagation();
+        dd.remove();
+        partSyllables[part.id] = opt.index;
+        updateMasterSyllables();
+        startMasterPulse();
+        sendSyllable();
+      };
+      dd.appendChild(item);
+    }
+
+    sylRow.appendChild(dd);
+    const closeHandler = (ev) => {
+      if (!dd.contains(ev.target) && ev.target !== sylCaret) {
+        dd.remove();
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler), 0);
+  };
+  sylRow.appendChild(sylCaret);
+
+  col.appendChild(sylRow);
 
   // Note display
   const note = document.createElement('div');
@@ -1116,6 +1330,7 @@ function createPartColumn(part) {
         part.paradigmaticRange[idx] = midi;
         inp.value = noteName(midi);
         updateAllocButtons();
+        buildRangeIndicators();
       } else {
         inp.value = noteName(part.paradigmaticRange[endpoint === 'low' ? 0 : 1]);
       }
@@ -1327,7 +1542,9 @@ function updateMasterDisplay() {
 // === Syllable system ===
 
 function getPartSyllable(partId) {
-  return syllables[partSyllables[partId] || 0];
+  const idx = partSyllables[partId];
+  if (idx === -1) return { text: '', pulse: false, none: true };
+  return syllables[idx || 0];
 }
 
 function anyPartPulsing() {
@@ -1337,20 +1554,64 @@ function anyPartPulsing() {
 function setSyllable(index) {
   activeSyllable = index;
   const parts = getTargetParts();
-  for (const pid of parts) partSyllables[pid] = index;
+  for (const pid of parts) {
+    // Skip locked parts unless this is a single-part override
+    if (syllableLocks[pid] && pid !== sylLockOverride) continue;
+    partSyllables[pid] = index;
+  }
   if (syllables[index].percussive) {
-    for (const pid of parts) partNotes[pid] = -1;
+    for (const pid of parts) {
+      if (syllableLocks[pid] && pid !== sylLockOverride) continue;
+      partNotes[pid] = -1;
+    }
     updateDisplay();
   }
   updateIndicators();
+  updateSylLockIcons();
   sendSyllable();
+}
+
+function updateSylLockIcons() {
+  for (const part of activeParts) {
+    const col = document.querySelector(`.part-column[data-part="${part.id}"]`);
+    if (!col) continue;
+    const icon = col.querySelector('.syl-lock-icon');
+    if (!icon) continue;
+    const locked = syllableLocks[part.id];
+    const overridden = (sylLockOverride === part.id);
+    icon.innerHTML = (locked && !overridden) ? lockSVG(part.color) : unlockSVG(part.color);
+    icon.style.opacity = locked ? '0.6' : '0.2';
+  }
+}
+
+function startPartEditing(partId) {
+  const col = document.querySelector(`.part-column[data-part="${partId}"]`);
+  if (!col) return;
+  const label = col.querySelector('.part-label');
+  if (label && label.onclick) label.onclick();
+}
+
+function lockSVG(color) {
+  return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="7" width="10" height="6" rx="1.5" fill="${color}" opacity="0.7"/>
+    <path d="M4 7V4.5C4 2.84 5.34 1.5 7 1.5C8.66 1.5 10 2.84 10 4.5V7" stroke="${color}" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+  </svg>`;
+}
+
+function unlockSVG(color) {
+  // Left post goes down to body; right end of arc hangs free (shackle open)
+  return `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="7" width="10" height="6" rx="1.5" fill="${color}" opacity="0.7"/>
+    <path d="M4 7V4.5C4 2.84 5.34 1.5 7 1.5C8.1 1.5 9.1 2.1 9.6 3" stroke="${color}" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+  </svg>`;
 }
 
 function sendSyllable() {
   const msg = { t: 'syl', perPart: {} };
   for (const part of activeParts) {
-    const syl = syllables[partSyllables[part.id] || 0];
+    const syl = getPartSyllable(part.id);
     const pd = { text: syl.text };
+    if (syl.none) pd.none = true;
     if (syl.pulse) { pd.pulse = true; pd.bpm = pulseBpm; }
     msg.perPart[part.id] = pd;
   }
@@ -1997,6 +2258,16 @@ function updatePianoLabels() {
 function updateTargetHighlight() {
   const anyModifier = modifierHeld.size > 0;
   const targetParts = getTargetParts();
+
+  // Manage syllable lock override: only when exactly one part is targeted and it's locked
+  const prevOverride = sylLockOverride;
+  if (anyModifier && targetParts.length === 1 && syllableLocks[targetParts[0]]) {
+    sylLockOverride = targetParts[0];
+  } else {
+    sylLockOverride = null;
+  }
+  if (prevOverride !== sylLockOverride) updateSylLockIcons();
+
   document.querySelectorAll('.part-column').forEach(c => {
     const pid = c.dataset.part;
     const part = getPartById(pid);
@@ -2240,6 +2511,7 @@ function updateChoirViz() {
   squares.forEach(sq => {
     sq.style.background = 'rgba(255,255,255,0.1)';
     sq.style.boxShadow = 'none';
+    sq.style.outline = 'none';
     sq.dataset.tip = midiToLabel(parseInt(sq.dataset.midi));
   });
 
@@ -2248,6 +2520,7 @@ function updateChoirViz() {
   // Build per-square color accumulation and singer info for tooltips
   const squareColors = {}; // midi -> [{r,g,b,alpha}]
   const squareSingers = {}; // midi -> [{name, range, partLabel}] for midpoint squares
+  const squareMidColors = {}; // midi -> [partColor] for midpoint border
   for (const singer of singers) {
     const part = getPartById(singer.part);
     if (!part) continue;
@@ -2257,7 +2530,7 @@ function updateChoirViz() {
     const midMidi = Math.round(mid);
     const rgb = parseColor(part.color);
 
-    // Track singer at their midpoint square for tooltip
+    // Track singer at their midpoint square for tooltip and border
     if (midMidi >= VIZ_LO && midMidi <= VIZ_HI) {
       if (!squareSingers[midMidi]) squareSingers[midMidi] = [];
       squareSingers[midMidi].push({
@@ -2265,6 +2538,8 @@ function updateChoirViz() {
         range: midiToLabel(lo) + '–' + midiToLabel(hi),
         partLabel: part.label
       });
+      if (!squareMidColors[midMidi]) squareMidColors[midMidi] = [];
+      squareMidColors[midMidi].push(part.color);
     }
 
     for (let midi = Math.max(lo, VIZ_LO); midi <= Math.min(hi, VIZ_HI); midi++) {
@@ -2310,6 +2585,17 @@ function updateChoirViz() {
     sq.style.background = `rgba(${r},${g},${b},${Math.max(a, 0.1)})`;
     if (a > 0.2) {
       sq.style.boxShadow = `0 0 ${Math.round(a * 6)}px rgba(${r},${g},${b},${a * 0.6})`;
+    }
+
+    // Midpoint border: 1px outline in the singer's part color (slightly brighter)
+    const midColors = squareMidColors[midi];
+    if (midColors && midColors.length > 0) {
+      // Use the last singer's part color (most recently added); brighten slightly
+      const mc = parseColor(midColors[midColors.length - 1]);
+      const br = Math.min(mc[0] + 40, 255);
+      const bg = Math.min(mc[1] + 40, 255);
+      const bb = Math.min(mc[2] + 40, 255);
+      sq.style.outline = `1px solid rgba(${br},${bg},${bb},0.8)`;
     }
   });
 }
@@ -2390,7 +2676,7 @@ function buildRangeIndicators() {
 
   for (let i = 0; i < activeParts.length; i++) {
     const part = activeParts[i];
-    const [lo, hi] = part.range;
+    const [lo, hi] = part.paradigmaticRange || part.range;
     const clampedLo = Math.max(pianoStart, lo);
     const clampedHi = Math.min(pianoEnd, hi);
     const leftPct = midiToLeftPct(clampedLo);
@@ -2453,6 +2739,14 @@ document.addEventListener('keydown', (e) => {
 
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
 
+  // Modifier + Enter: edit part name
+  if (e.code === 'Enter' && modifierHeld.size > 0) {
+    e.preventDefault();
+    const targets = getTargetParts();
+    if (targets.length === 1) startPartEditing(targets[0]);
+    return;
+  }
+
   // Backspace/Delete: hold for tonic shortcut, tap for mode toggle
   if ((e.code === 'Delete' || e.code === 'Backspace') && !e.repeat) {
     e.preventDefault();
@@ -2478,11 +2772,11 @@ document.addEventListener('keydown', (e) => {
 
   // Syllable keys — only when QWERTY mode is on (A/G/B are chord selectors when QWERTY off)
   if (qwertyShortcuts) {
-    if (e.code === 'KeyA') { e.preventDefault(); setSyllable(0); return; }
-    if (e.code === 'KeyM') { e.preventDefault(); setSyllable(1); return; }
-    if (e.code === 'KeyG') { e.preventDefault(); setSyllable(2); return; }
-    if (e.code === 'KeyB') { e.preventDefault(); setSyllable(3); return; }
-    if (e.code === 'KeyS') { e.preventDefault(); setSyllable(4); return; }
+    if (e.code === 'KeyZ') { e.preventDefault(); setSyllable(0); return; }
+    if (e.code === 'KeyX') { e.preventDefault(); setSyllable(1); return; }
+    if (e.code === 'KeyV') { e.preventDefault(); setSyllable(2); return; }
+    if (e.code === 'KeyN') { e.preventDefault(); setSyllable(3); return; }
+    if (e.code === 'KeyM') { e.preventDefault(); setSyllable(4); return; }
   }
 
   // BPM and sustain

@@ -161,7 +161,7 @@
     <button class="part-switch-btn alto" onclick="switchPart('alto')">A</button>
     <button class="part-switch-btn soprano" onclick="switchPart('soprano')">S</button>
   </div>
-  <div class="syllable-display" id="syllableDisplay">Aah</div>
+  <div class="syllable-display" id="syllableDisplay">Ooo</div>
   <div class="current-note silent" id="noteDisplay">---</div>
   <div class="mini-piano-wrapper">
     <div class="mini-piano" id="miniPiano"></div>
@@ -218,7 +218,8 @@ let autoMuteTimer = null;
 let partVolume = 0.5;
 
 // Syllable state
-let currentSyllable = 'Aah';
+let currentSyllable = 'Ooo';
+let syllableNone = false;
 let isPulsing = false;
 let pulseBpm = 100;
 let pulseTimer = null;
@@ -749,6 +750,13 @@ function updateSyllableDisplay() {
   // Clear any existing pulse
   if (pulseTimer) { clearInterval(pulseTimer); pulseTimer = null; }
 
+  if (syllableNone) {
+    el.style.transition = 'none';
+    el.style.opacity = '1';
+    el.textContent = '';
+    return;
+  }
+
   if (isPulsing) {
     startPulse();
   } else {
@@ -1042,7 +1050,8 @@ function connectWebSocket(code, isReconnect) {
     } else if (msg.t === 'syl') {
       if (msg.perPart && msg.perPart[selectedPart]) {
         const pd = msg.perPart[selectedPart];
-        currentSyllable = pd.text;
+        currentSyllable = pd.none ? '' : pd.text;
+        syllableNone = !!pd.none;
         isPulsing = !!pd.pulse;
         if (pd.bpm) pulseBpm = pd.bpm;
       }
