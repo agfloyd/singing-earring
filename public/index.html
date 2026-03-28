@@ -97,13 +97,30 @@
 </head>
 <body>
 
-<div id="joinScreen">
+<!-- Screen 1: Room Code Entry -->
+<div id="roomCodeScreen">
   <h1>Singing Earring</h1>
-  <div class="subtitle">Join a room and sing your part</div>
+  <div class="subtitle">Enter your room code to join</div>
 
   <input type="text" class="code-input" id="codeInput" placeholder="Room code" maxlength="4" autocomplete="off" autocapitalize="characters">
 
-  <input type="text" id="nameInput" placeholder="Your name (optional)" autocomplete="off" style="background:#16213e;border:1px solid #0f3460;color:#eee;padding:8px 12px;border-radius:8px;width:100%;font-size:0.95rem;margin-top:12px;outline:none;text-align:center;" onfocus="this.style.borderColor='#e94560'" onblur="this.style.borderColor='#0f3460'">
+  <button class="join-btn" id="nextBtn" style="margin-top:16px;opacity:0.4;pointer-events:none;" onclick="checkRoom()">Next</button>
+  <div class="error" id="codeError"></div>
+
+  <div class="warnings" style="margin-top:24px;">
+    <p>Use wired headphones for best results. Bluetooth adds noticeable delay.</p>
+    <p>iOS users: make sure your mute switch is OFF.</p>
+  </div>
+</div>
+
+<!-- Screen 2: Join Details (name, range, presets) -->
+<div id="lobbyScreen" style="display:none;">
+  <h1>Singing Earring</h1>
+  <div class="subtitle" id="lobbySubtitle">Pick your part and join</div>
+
+  <div id="nameRow">
+    <input type="text" id="nameInput" placeholder="Your name (optional)" autocomplete="off" style="background:#16213e;border:1px solid #0f3460;color:#eee;padding:8px 12px;border-radius:8px;width:100%;font-size:0.95rem;outline:none;text-align:center;" onfocus="this.style.borderColor='#e94560'" onblur="this.style.borderColor='#0f3460'" oninput="checkReady()">
+  </div>
 
   <div class="range-row">
     Range:
@@ -129,13 +146,19 @@
     <button class="part-btn soprano" data-part="soprano" onclick="selectPart(this)">Soprano</button>
   </div>
 
-  <button class="join-btn" id="joinBtn" onclick="joinRoom()">Join</button>
+  <button class="join-btn" id="joinBtn" onclick="onLobbyJoin()">Join</button>
   <div class="error" id="error"></div>
 
-  <div class="warnings">
-    <p>Use wired headphones for best results. Bluetooth adds noticeable delay.</p>
-    <p>iOS users: make sure your mute switch is OFF.</p>
-  </div>
+  <div style="margin-top:12px;"><a href="#" onclick="backFromLobby();return false;" style="color:#888;font-size:0.85rem;text-decoration:none;">← Back</a></div>
+</div>
+
+<!-- Name Screen (used for "before lobby" or "after lobby" positions) -->
+<div id="nameScreen" style="display:none;width:100%;max-width:360px;text-align:center;">
+  <h1>Singing Earring</h1>
+  <div class="subtitle" id="nameScreenSubtitle">What's your name?</div>
+  <input type="text" id="nameScreenInput" placeholder="Your name" autocomplete="off" style="background:#16213e;border:2px solid #0f3460;color:#eee;padding:12px;border-radius:12px;width:100%;font-size:1.1rem;outline:none;text-align:center;" onfocus="this.style.borderColor='#e94560'" onblur="this.style.borderColor='#0f3460'" oninput="checkNameScreenReady()">
+  <button class="join-btn" id="nameScreenBtn" style="margin-top:16px;" onclick="nameScreenNext()">Next</button>
+  <div style="margin-top:12px;"><a href="#" onclick="backFromNameScreen();return false;" style="color:#888;font-size:0.85rem;text-decoration:none;">← Back</a></div>
 </div>
 
 <div id="singScreen">
@@ -248,14 +271,211 @@ function selectPart(btn) {
   checkReady();
 }
 
-function checkReady() {
+function checkCodeReady() {
   const code = document.getElementById('codeInput').value.trim();
+  const btn = document.getElementById('nextBtn');
+  if (code.length === 4) {
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
+  } else {
+    btn.style.opacity = '0.4';
+    btn.style.pointerEvents = 'none';
+  }
+}
+
+function checkReady() {
   const btn = document.getElementById('joinBtn');
-  if (code.length === 4 && customRange.low !== null && customRange.high !== null) {
+  const rangeOk = customRange.low !== null && customRange.high !== null;
+  // If name is required and shown on lobby screen, check it
+  let nameOk = true;
+  if (lobbyConfig && lobbyConfig.nameMode === 'required') {
+    const pos = lobbyConfig.namePosition || 'top';
+    if (pos === 'top' || pos === 'bottom') {
+      nameOk = !!document.getElementById('nameInput').value.trim();
+    }
+    // before/after: handled by their own screens
+  }
+  if (rangeOk && nameOk) {
     btn.classList.add('ready');
   } else {
     btn.classList.remove('ready');
   }
+}
+
+let lobbyConfig = null; // received from server
+
+function checkRoom() {
+  const code = document.getElementById('codeInput').value.trim().toUpperCase();
+  if (code.length !== 4) return;
+  document.getElementById('codeError').textContent = '';
+
+  // Connect WebSocket and send check
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const checkWs = new WebSocket(`${proto}//${location.host}`);
+  checkWs.onopen = () => {
+    checkWs.send(JSON.stringify({ t: 'check', code: code }));
+  };
+  checkWs.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.t === 'lobby') {
+      lobbyConfig = msg;
+      checkWs.close();
+      showLobby(code, msg);
+    } else if (msg.t === 'error') {
+      document.getElementById('codeError').textContent = msg.msg;
+      checkWs.close();
+    }
+  };
+  checkWs.onerror = () => {
+    document.getElementById('codeError').textContent = 'Connection failed';
+  };
+}
+
+function showLobby(code, config) {
+  lobbyConfig = config;
+
+  // Determine name field positioning
+  const nameMode = config.nameMode || 'optional'; // 'off', 'optional', 'required'
+  const namePos = config.namePosition || 'top'; // 'before', 'top', 'bottom', 'after'
+  const showName = nameMode !== 'off';
+
+  if (showName && namePos === 'before') {
+    // Show name screen first, then lobby
+    showNameScreen('before');
+    return;
+  }
+
+  // Show lobby screen directly
+  document.getElementById('roomCodeScreen').style.display = 'none';
+  document.getElementById('nameScreen').style.display = 'none';
+  document.getElementById('lobbyScreen').style.display = '';
+
+  // Show/hide name field on lobby screen based on position
+  const nameRow = document.getElementById('nameRow');
+  const nameInput = document.getElementById('nameInput');
+  if (showName && (namePos === 'top' || namePos === 'bottom')) {
+    nameRow.style.display = '';
+    nameInput.placeholder = nameMode === 'required' ? 'Your name' : 'Your name (optional)';
+    // Move name row to top or bottom of lobby content
+    const lobbyScreen = document.getElementById('lobbyScreen');
+    const joinBtn = document.getElementById('joinBtn');
+    if (namePos === 'bottom') {
+      // Insert before the join button
+      joinBtn.parentNode.insertBefore(nameRow, joinBtn);
+    } else {
+      // Insert after subtitle (top)
+      const subtitle = document.getElementById('lobbySubtitle');
+      subtitle.parentNode.insertBefore(nameRow, subtitle.nextSibling);
+    }
+  } else {
+    nameRow.style.display = 'none';
+  }
+
+  // Build preset buttons from config
+  buildLobbyPresetButtons(config);
+}
+
+function buildLobbyPresetButtons(config) {
+  if (config.presets && config.presets.length > 0) {
+    const container = document.getElementById('parts');
+    container.innerHTML = '';
+    for (const p of config.presets) {
+      PART_COLORS[p.id] = p.color;
+      if (p.range) RANGE[p.id] = p.range;
+    }
+    const cols = config.presets.length <= 4 ? 2 : (config.presets.length <= 6 ? 3 : 4);
+    container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    for (const p of config.presets) {
+      const btn = document.createElement('button');
+      btn.className = 'part-btn';
+      btn.dataset.part = p.id;
+      btn.style.background = `${p.color}22`;
+      btn.style.color = p.color;
+      btn.textContent = p.label;
+      btn.onclick = function() { selectPart(this); };
+      container.appendChild(btn);
+    }
+  }
+}
+
+function showNameScreen(flow) {
+  // flow: 'before' or 'after'
+  nameScreenFlow = flow;
+  document.getElementById('roomCodeScreen').style.display = 'none';
+  document.getElementById('lobbyScreen').style.display = 'none';
+  document.getElementById('nameScreen').style.display = '';
+  const nameMode = lobbyConfig.nameMode || 'optional';
+  const inp = document.getElementById('nameScreenInput');
+  inp.placeholder = nameMode === 'required' ? 'Your name' : 'Your name (optional)';
+  inp.value = document.getElementById('nameInput').value || '';
+  const btn = document.getElementById('nameScreenBtn');
+  btn.textContent = flow === 'after' ? 'Join' : 'Next';
+  checkNameScreenReady();
+}
+
+let nameScreenFlow = null; // 'before' or 'after'
+
+function checkNameScreenReady() {
+  const nameMode = lobbyConfig ? (lobbyConfig.nameMode || 'optional') : 'optional';
+  const inp = document.getElementById('nameScreenInput');
+  const btn = document.getElementById('nameScreenBtn');
+  if (nameMode === 'required' && !inp.value.trim()) {
+    btn.classList.remove('ready');
+  } else {
+    btn.classList.add('ready');
+  }
+}
+
+function nameScreenNext() {
+  const btn = document.getElementById('nameScreenBtn');
+  if (!btn.classList.contains('ready')) return;
+  // Copy name to the hidden nameInput
+  document.getElementById('nameInput').value = document.getElementById('nameScreenInput').value;
+  if (nameScreenFlow === 'before') {
+    // Proceed to lobby
+    document.getElementById('nameScreen').style.display = 'none';
+    document.getElementById('lobbyScreen').style.display = '';
+    document.getElementById('nameRow').style.display = 'none'; // name already collected
+    buildLobbyPresetButtons(lobbyConfig);
+  } else {
+    // 'after' — actually join
+    joinRoom();
+  }
+}
+
+function backFromNameScreen() {
+  document.getElementById('nameScreen').style.display = 'none';
+  if (nameScreenFlow === 'before') {
+    // Back to room code
+    document.getElementById('roomCodeScreen').style.display = '';
+  } else {
+    // Back to lobby
+    document.getElementById('lobbyScreen').style.display = '';
+  }
+}
+
+function backFromLobby() {
+  document.getElementById('lobbyScreen').style.display = 'none';
+  if (nameScreenFlow === 'before') {
+    // Back to name screen
+    showNameScreen('before');
+  } else {
+    // Back to room code
+    backToRoomCode();
+  }
+}
+
+function backToRoomCode() {
+  document.getElementById('lobbyScreen').style.display = 'none';
+  document.getElementById('roomCodeScreen').style.display = '';
+  // Reset selection
+  selectedPart = null;
+  customRange.low = null;
+  customRange.high = null;
+  document.getElementById('rangeLow').value = '';
+  document.getElementById('rangeHigh').value = '';
+  document.querySelectorAll('.part-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('joinBtn').classList.remove('ready');
 }
 
 // === Range Picker ===
@@ -506,7 +726,13 @@ document.getElementById('rangeHigh').addEventListener('keydown', (e) => handleRa
 
 document.getElementById('codeInput').addEventListener('input', (e) => {
   e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
-  checkReady();
+  checkCodeReady();
+});
+// Allow Enter key to advance from room code screen
+document.getElementById('codeInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.getElementById('codeInput').value.trim().length === 4) {
+    checkRoom();
+  }
 });
 
 // === Sing-screen Range Picker ===
@@ -958,7 +1184,9 @@ function connectWebSocket(code, isReconnect) {
     if (msg.t === 'joined') {
       roomCode = msg.code;
       myId = msg.id;
-      document.getElementById('joinScreen').style.display = 'none';
+      document.getElementById('roomCodeScreen').style.display = 'none';
+      document.getElementById('lobbyScreen').style.display = 'none';
+      document.getElementById('nameScreen').style.display = 'none';
       document.getElementById('singScreen').style.display = 'block';
       updatePartDisplay();
       buildMiniPiano();
@@ -1076,6 +1304,16 @@ function connectWebSocket(code, isReconnect) {
   };
 }
 
+function onLobbyJoin() {
+  if (customRange.low === null || customRange.high === null) return;
+  // If name position is 'after', show name screen before actually joining
+  if (lobbyConfig && lobbyConfig.nameMode !== 'off' && lobbyConfig.namePosition === 'after') {
+    showNameScreen('after');
+    return;
+  }
+  joinRoom();
+}
+
 function joinRoom() {
   const code = document.getElementById('codeInput').value.trim().toUpperCase();
   if (code.length !== 4 || customRange.low === null || customRange.high === null) return;
@@ -1095,7 +1333,9 @@ function showJoin() {
   if (gainNode && audioCtx) gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.01);
   currentMidi = -1;
   roomCode = null;
-  document.getElementById('joinScreen').style.display = '';
+  document.getElementById('roomCodeScreen').style.display = '';
+  document.getElementById('lobbyScreen').style.display = 'none';
+  document.getElementById('nameScreen').style.display = 'none';
   document.getElementById('singScreen').style.display = 'none';
   if (wakeLock) { wakeLock.release(); wakeLock = null; }
 }
@@ -1116,9 +1356,11 @@ document.addEventListener('visibilitychange', () => {
 // Test mode
 const isTestMode = new URLSearchParams(location.search).has('test');
 if (isTestMode) {
+  // Skip room code screen, go straight to lobby
   document.getElementById('codeInput').value = 'TEST';
-  document.getElementById('codeInput').style.display = 'none';
-  document.querySelector('.subtitle').textContent = 'Test mode — pick your part';
+  document.getElementById('roomCodeScreen').style.display = 'none';
+  document.getElementById('lobbyScreen').style.display = '';
+  document.getElementById('lobbySubtitle').textContent = 'Test mode — pick your part';
 
   const origSelectPart = selectPart;
   selectPart = function(btn) {

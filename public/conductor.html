@@ -93,6 +93,9 @@
       <button onclick="resetVolumes()" style="font-size:0.6rem;padding:2px 6px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;">Reset</button>
       <div class="vol-btn" onclick="adjustVolume(-5)">▼<span class="vol-key">↓</span></div>
     </div>
+    <div id="masterVolBarWrap" style="display:none;position:relative;width:8px;border-radius:4px;background:rgba(255,255,255,0.08);overflow:hidden;margin-right:6px;cursor:pointer;align-self:stretch;">
+      <div id="masterVolBar" style="position:absolute;bottom:0;width:100%;border-radius:4px;background:#888;transition:height 0.1s;pointer-events:none;height:50%;"></div>
+    </div>
     <div id="masterDisplayContainer" style="flex:1;"></div>
   </div>
   <div id="choirVizSection" style="margin-top:12px;">
@@ -105,7 +108,67 @@
         <span id="strictRangeLabel">Vocal range:</span>
       </button>
     </div>
-    <div id="choirSquares" style="display:flex;margin-top:6px;"></div>
+    <div class="range-indicators" id="choirRangeIndicators" style="height:24px;margin-top:4px;"></div>
+    <div id="choirSquares" style="display:flex;margin-top:2px;"></div>
+  </div>
+
+  <!-- Customize Lobby View -->
+  <div style="margin-top:8px;">
+    <button id="lobbyToggleBtn" onclick="toggleLobbyPanel()" style="font-size:0.7rem;padding:3px 10px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;">Customize Lobby View ▸</button>
+  </div>
+  <div id="lobbyPanel" style="display:none;margin-top:8px;background:rgba(255,255,255,0.03);border:1px solid #333;border-radius:8px;padding:12px;">
+    <div style="display:flex;gap:16px;align-items:flex-start;">
+      <!-- Controls -->
+      <div style="flex:1;min-width:260px;">
+        <div style="font-size:0.8rem;color:#aaa;margin-bottom:6px;font-weight:bold;">Name Field</div>
+        <div style="display:flex;gap:16px;margin-bottom:10px;">
+          <div style="display:flex;flex-direction:column;gap:3px;" id="nameModeBtns">
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+              <input type="radio" name="nameMode" value="off" onchange="onNameModeChange()"> Off
+            </label>
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+              <input type="radio" name="nameMode" value="optional" checked onchange="onNameModeChange()"> Optional
+            </label>
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+              <input type="radio" name="nameMode" value="required" onchange="onNameModeChange()"> Required
+            </label>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;" id="namePositionBtns">
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+              <input type="radio" name="namePosition" value="before" onchange="onNamePositionChange()"> Before lobby screen
+            </label>
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+              <input type="radio" name="namePosition" value="top" checked onchange="onNamePositionChange()"> Top of lobby screen
+            </label>
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+              <input type="radio" name="namePosition" value="bottom" onchange="onNamePositionChange()"> Bottom of lobby screen
+            </label>
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+              <input type="radio" name="namePosition" value="after" onchange="onNamePositionChange()"> After lobby screen
+            </label>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <span style="font-size:0.8rem;color:#aaa;font-weight:bold;">Preset buttons shown to musicians:</span>
+          <div style="display:flex;align-items:center;gap:2px;">
+            <input type="number" id="lobbyPresetCount" min="1" max="12" value="4" style="width:28px;text-align:center;font-size:0.85rem;font-weight:bold;background:transparent;border:1px solid #555;border-radius:4px;color:#ccc;padding:1px 2px;-moz-appearance:textfield;outline:none;" onchange="onLobbyCountChange(this.value)">
+            <div style="display:flex;flex-direction:column;gap:0;">
+              <button onclick="adjustLobbyCount(1)" style="font-size:0.5rem;padding:0 3px;background:transparent;border:none;color:rgba(255,255,255,0.3);cursor:pointer;line-height:1;">▲</button>
+              <button onclick="adjustLobbyCount(-1)" style="font-size:0.5rem;padding:0 3px;background:transparent;border:none;color:rgba(255,255,255,0.3);cursor:pointer;line-height:1;">▼</button>
+            </div>
+          </div>
+        </div>
+        <label id="matchPartsLabel" style="display:flex;align-items:center;gap:6px;font-size:0.75rem;color:#ccc;cursor:pointer;margin-bottom:8px;">
+          <input type="checkbox" id="lobbyMatchParts" checked onchange="toggleMatchParts()"> Match current parts
+        </label>
+        <div id="lobbyCustomList" style="display:none;max-height:280px;overflow-y:auto;"></div>
+      </div>
+      <!-- Preview -->
+      <div style="flex:1;min-width:200px;background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:12px;max-width:280px;">
+        <div style="font-size:0.7rem;color:#666;text-align:center;margin-bottom:6px;">Musician lobby preview</div>
+        <div id="lobbyPreview" style="text-align:center;"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -333,6 +396,59 @@ const VOCAL_RANGES = {
   soprano1:  [67, 84],  // G4-C6 (high half)
   treble:    [55, 84],  // G3-C6
   unison:    [40, 84],  // E2-C6
+};
+
+// Instrument ranges (MIDI note numbers) — practical playing ranges
+const INSTRUMENT_RANGES = {
+  // Strings
+  violin:      [55, 93],  // G3–A6
+  viola:       [48, 84],  // C3–C6
+  cello:       [36, 72],  // C2–C5
+  doublebass:  [28, 60],  // E1–C4
+  harp:        [24, 91],  // C1–G6
+  mandolin:    [55, 84],  // G3–C6
+  // Brass
+  trumpet:     [54, 82],  // F#3–Bb5
+  frenchhorn:  [41, 77],  // F2–F5
+  trombone:    [34, 67],  // Bb1–G4
+  basstrombone:[33, 62],  // A1–D4
+  tuba:        [28, 58],  // E1–Bb3
+  euphonium:   [34, 67],  // Bb1–G4
+  flugelhorn:  [54, 80],  // F#3–Ab5
+  cornet:      [54, 82],  // F#3–Bb5
+  // Woodwinds
+  piccolo:     [74, 105], // D5–A7
+  flute:       [60, 96],  // C4–C7
+  oboe:        [58, 91],  // Bb3–G6
+  clarinet:    [50, 89],  // D3–F6
+  bassclarinet:[38, 77],  // D2–F5
+  bassoon:     [34, 72],  // Bb1–C5
+  contrabassoon:[22,55],  // Bb0–G3
+  saxophone:   [49, 80],  // Db3–Ab5 (alto sax)
+  tenorsax:    [44, 75],  // Ab2–Eb5
+  sopranosax:  [56, 87],  // Ab3–Eb6
+  barisax:     [36, 68],  // C2–Ab4
+  recorder:    [60, 86],  // C4–D6 (soprano recorder)
+  // Rhythm section
+  guitar:      [40, 76],  // E2–E5
+  bassguitar:  [28, 55],  // E1–G3
+  banjo:       [50, 79],  // D3–G5
+  ukulele:     [60, 81],  // C4–A5
+  piano:       [21, 108], // A0–C8
+  melodica:    [53, 84],  // F3–C6
+  // Other
+  accordion:   [41, 89],  // F2–F6
+  harmonica:   [60, 84],  // C4–C6
+  steeldrum:   [48, 84],  // C3–C6
+  xylophone:   [65, 96],  // F4–C7
+  marimba:     [45, 84],  // A2–C6
+  vibraphone:  [53, 89],  // F3–F6
+  glockenspiel:[79, 108], // G5–C8
+  celesta:     [60, 96],  // C4–C7
+  organpipe:   [36, 96],  // C2–C7
+  bagpipes:    [55, 74],  // G3–D5
+  sitar:       [48, 84],  // C3–C6
+  erhu:        [55, 84],  // G3–C6
 };
 
 function computePartRanges(parts) {
@@ -985,6 +1101,546 @@ function sendPartConfig() {
     color: p.color, range: p.range, mid: p.mid
   }));
   ws.send(JSON.stringify({ t: 'parts', parts: partsData }));
+  onPartsChanged();
+}
+
+// === Lobby Customization ===
+
+let lobbyNameMode = 'optional'; // 'off', 'optional', 'required'
+let lobbyNamePosition = 'top'; // 'before', 'top', 'bottom', 'after'
+let lobbyMatchParts = true; // when true, lobby presets mirror activeParts
+let lobbyCustomPresets = null; // array of {id, label, color, range:[lo,hi]} when not matching
+let lobbyPanelOpen = false;
+
+// The full nested PRESETS menu, reused for lobby custom dropdowns
+const LOBBY_PRESETS_MENU = [
+  { label: 'Bass', subs: [
+    { label: 'Bass', key: 'bass' },
+    { label: 'Bass I', key: 'bass1' },
+    { label: 'Bass II', key: 'bass2' },
+  ]},
+  { label: 'Baritone', subs: [
+    { label: 'Baritone', key: 'baritone' },
+    { label: 'Baritone I', key: 'baritone1' },
+    { label: 'Baritone II', key: 'baritone2' },
+  ]},
+  { label: 'Tenor', subs: [
+    { label: 'Tenor', key: 'tenor' },
+    { label: 'Tenor I', key: 'tenor1' },
+    { label: 'Tenor II', key: 'tenor2' },
+  ]},
+  { label: 'Alto', subs: [
+    { label: 'Alto', key: 'alto' },
+    { label: 'Alto I', key: 'alto1' },
+    { label: 'Alto II', key: 'alto2' },
+  ]},
+  { label: 'Mezzo-Soprano', subs: [
+    { label: 'Mezzo-Soprano', key: 'mezzo' },
+    { label: 'Mezzo-Soprano I', key: 'mezzo1' },
+    { label: 'Mezzo-Soprano II', key: 'mezzo2' },
+  ]},
+  { label: 'Soprano', subs: [
+    { label: 'Soprano', key: 'soprano' },
+    { label: 'Soprano I', key: 'soprano1' },
+    { label: 'Soprano II', key: 'soprano2' },
+  ]},
+  { label: 'Instruments', subs: [
+    { label: 'Strings', subs: [
+      { label: 'Violin', key: 'violin' },
+      { label: 'Viola', key: 'viola' },
+      { label: 'Cello', key: 'cello' },
+      { label: 'Double Bass', key: 'doublebass' },
+      { label: 'Harp', key: 'harp' },
+      { label: 'Mandolin', key: 'mandolin' },
+    ]},
+    { label: 'Brass', subs: [
+      { label: 'Trumpet', key: 'trumpet' },
+      { label: 'French Horn', key: 'frenchhorn' },
+      { label: 'Trombone', key: 'trombone' },
+      { label: 'Bass Trombone', key: 'basstrombone' },
+      { label: 'Tuba', key: 'tuba' },
+      { label: 'Euphonium', key: 'euphonium' },
+      { label: 'Flugelhorn', key: 'flugelhorn' },
+      { label: 'Cornet', key: 'cornet' },
+    ]},
+    { label: 'Woodwinds', subs: [
+      { label: 'Piccolo', key: 'piccolo' },
+      { label: 'Flute', key: 'flute' },
+      { label: 'Oboe', key: 'oboe' },
+      { label: 'Clarinet', key: 'clarinet' },
+      { label: 'Bass Clarinet', key: 'bassclarinet' },
+      { label: 'Bassoon', key: 'bassoon' },
+      { label: 'Contrabassoon', key: 'contrabassoon' },
+      { label: 'Alto Sax', key: 'saxophone' },
+      { label: 'Tenor Sax', key: 'tenorsax' },
+      { label: 'Soprano Sax', key: 'sopranosax' },
+      { label: 'Bari Sax', key: 'barisax' },
+      { label: 'Recorder', key: 'recorder' },
+    ]},
+    { label: 'Rhythm Section', subs: [
+      { label: 'Guitar', key: 'guitar' },
+      { label: 'Bass Guitar', key: 'bassguitar' },
+      { label: 'Banjo', key: 'banjo' },
+      { label: 'Ukulele', key: 'ukulele' },
+      { label: 'Piano', key: 'piano' },
+      { label: 'Melodica', key: 'melodica' },
+    ]},
+    { label: 'Other', subs: [
+      { label: 'Accordion', key: 'accordion' },
+      { label: 'Harmonica', key: 'harmonica' },
+      { label: 'Steel Drum', key: 'steeldrum' },
+      { label: 'Xylophone', key: 'xylophone' },
+      { label: 'Marimba', key: 'marimba' },
+      { label: 'Vibraphone', key: 'vibraphone' },
+      { label: 'Glockenspiel', key: 'glockenspiel' },
+      { label: 'Celesta', key: 'celesta' },
+      { label: 'Pipe Organ', key: 'organpipe' },
+      { label: 'Bagpipes', key: 'bagpipes' },
+      { label: 'Sitar', key: 'sitar' },
+      { label: 'Erhu', key: 'erhu' },
+    ]},
+  ]},
+  { label: 'Custom', subs: null },
+];
+
+// All known ranges lookup
+function lookupRange(key) {
+  return VOCAL_RANGES[key] || INSTRUMENT_RANGES[key] || null;
+}
+
+// Ordered list of all vocal presets by range midpoint (low to high)
+const ALL_VOCAL_PRESETS = [
+  { key: 'bass2', label: 'Bass II', mid: 46 },
+  { key: 'bass', label: 'Bass', mid: 52 },
+  { key: 'baritone2', label: 'Baritone II', mid: 51 },
+  { key: 'bass1', label: 'Bass I', mid: 56 },
+  { key: 'baritone', label: 'Baritone', mid: 57 },
+  { key: 'tenor2', label: 'Tenor II', mid: 54 },
+  { key: 'baritone1', label: 'Baritone I', mid: 60.5 },
+  { key: 'tenor', label: 'Tenor', mid: 60 },
+  { key: 'tenor1', label: 'Tenor I', mid: 63.5 },
+  { key: 'alto2', label: 'Alto II', mid: 59 },
+  { key: 'alto', label: 'Alto', mid: 65 },
+  { key: 'alto1', label: 'Alto I', mid: 68.5 },
+  { key: 'mezzo2', label: 'Mezzo-Sop. II', mid: 63 },
+  { key: 'mezzo', label: 'Mezzo-Soprano', mid: 69 },
+  { key: 'mezzo1', label: 'Mezzo-Sop. I', mid: 72.5 },
+  { key: 'soprano2', label: 'Soprano II', mid: 66 },
+  { key: 'soprano', label: 'Soprano', mid: 72 },
+  { key: 'soprano1', label: 'Soprano I', mid: 75.5 },
+].sort((a, b) => a.mid - b.mid);
+
+function toggleLobbyPanel() {
+  lobbyPanelOpen = !lobbyPanelOpen;
+  document.getElementById('lobbyPanel').style.display = lobbyPanelOpen ? '' : 'none';
+  document.getElementById('lobbyToggleBtn').textContent = lobbyPanelOpen ? 'Customize Lobby View ▾' : 'Customize Lobby View ▸';
+  if (lobbyPanelOpen) {
+    syncLobbyUI();
+    updateLobbyPreview();
+  }
+}
+
+function onNameModeChange() {
+  lobbyNameMode = document.querySelector('input[name="nameMode"]:checked').value;
+  document.getElementById('namePositionBtns').style.display = lobbyNameMode === 'off' ? 'none' : '';
+  sendLobbyConfig();
+  updateLobbyPreview();
+}
+
+function onNamePositionChange() {
+  lobbyNamePosition = document.querySelector('input[name="namePosition"]:checked').value;
+  sendLobbyConfig();
+  updateLobbyPreview();
+}
+
+function syncLobbyUI() {
+  // Sync name field radios
+  const modeRadio = document.querySelector(`input[name="nameMode"][value="${lobbyNameMode}"]`);
+  if (modeRadio) modeRadio.checked = true;
+  const posRadio = document.querySelector(`input[name="namePosition"][value="${lobbyNamePosition}"]`);
+  if (posRadio) posRadio.checked = true;
+  document.getElementById('namePositionBtns').style.display = lobbyNameMode === 'off' ? 'none' : '';
+
+  const countInput = document.getElementById('lobbyPresetCount');
+  const matchCb = document.getElementById('lobbyMatchParts');
+  matchCb.checked = lobbyMatchParts;
+  if (lobbyMatchParts) {
+    countInput.value = activeParts.length;
+    countInput.style.opacity = '0.35';
+    countInput.disabled = true;
+    document.getElementById('lobbyCustomList').style.display = 'none';
+  } else {
+    const presets = lobbyCustomPresets || [];
+    countInput.value = presets.length;
+    countInput.style.opacity = '1';
+    countInput.disabled = false;
+    document.getElementById('lobbyCustomList').style.display = '';
+    buildLobbyCustomList();
+  }
+}
+
+function toggleMatchParts() {
+  const cb = document.getElementById('lobbyMatchParts');
+  lobbyMatchParts = cb.checked;
+  if (!lobbyMatchParts && !lobbyCustomPresets) {
+    // Snapshot current parts into custom presets
+    lobbyCustomPresets = activeParts.map(p => ({
+      id: p.id, label: p.label, color: p.color, range: [...(p.paradigmaticRange || p.range)]
+    }));
+    recolorCustomPresets();
+  }
+  syncLobbyUI();
+  sendLobbyConfig();
+  updateLobbyPreview();
+}
+
+function adjustLobbyCount(delta) {
+  if (lobbyMatchParts) return;
+  const inp = document.getElementById('lobbyPresetCount');
+  const newVal = Math.max(1, Math.min(12, (parseInt(inp.value) || 1) + delta));
+  inp.value = newVal;
+  onLobbyCountChange(newVal);
+}
+
+function onLobbyCountChange(val) {
+  if (lobbyMatchParts) return;
+  const n = Math.max(1, Math.min(12, parseInt(val) || 1));
+  document.getElementById('lobbyPresetCount').value = n;
+  // Generate default presets for this count using the same logic as the main conductor
+  const defaultParts = getPartConfig(n);
+  computePartRanges(defaultParts);
+  computePartColors(defaultParts);
+  lobbyCustomPresets = defaultParts.map(p => {
+    const vr = VOCAL_RANGES[p.id];
+    return { id: p.id, label: p.label, color: p.color, range: vr ? [...vr] : [...p.range] };
+  });
+  buildLobbyCustomList();
+  sendLobbyConfig();
+  updateLobbyPreview();
+}
+
+// Called when conductor changes parts in the main view — update lobby if matching
+function onPartsChanged() {
+  if (lobbyMatchParts && lobbyPanelOpen) {
+    document.getElementById('lobbyPresetCount').value = activeParts.length;
+    updateLobbyPreview();
+  }
+  if (lobbyMatchParts) sendLobbyConfig();
+}
+
+function getLobbyPresets() {
+  if (lobbyMatchParts) return activeParts.map(p => ({
+    id: p.id, label: p.label, color: p.color, range: [...(p.paradigmaticRange || p.range)]
+  }));
+  return lobbyCustomPresets || [];
+}
+
+function sendLobbyConfig() {
+  if (!ws || ws.readyState !== 1) return;
+  const presets = getLobbyPresets().map(p => ({ id: p.id, label: p.label, color: p.color, range: p.range }));
+  ws.send(JSON.stringify({ t: 'lobbyConfig', nameMode: lobbyNameMode, namePosition: lobbyNamePosition, presets: presets }));
+}
+
+// === Custom preset list builder ===
+
+function findBestPresetBetween(aboveMid, belowMid) {
+  // Find the vocal preset whose midpoint is closest to the midpoint between above and below
+  const targetMid = (aboveMid + belowMid) / 2;
+  let best = ALL_VOCAL_PRESETS[Math.floor(ALL_VOCAL_PRESETS.length / 2)];
+  let bestDist = Infinity;
+  for (const vp of ALL_VOCAL_PRESETS) {
+    const d = Math.abs(vp.mid - targetMid);
+    if (d < bestDist) { bestDist = d; best = vp; }
+  }
+  const range = lookupRange(best.key) || [48, 72];
+  return { id: best.key, label: best.label, color: 'hsl(200, 70%, 60%)', range: [...range] };
+}
+
+function recolorCustomPresets() {
+  if (!lobbyCustomPresets || lobbyCustomPresets.length === 0) return;
+  const n = lobbyCustomPresets.length;
+  if (n === 1) {
+    lobbyCustomPresets[0].color = 'hsl(200, 70%, 60%)';
+  } else {
+    for (let i = 0; i < n; i++) {
+      lobbyCustomPresets[i].color = `hsl(${Math.round((i / (n - 1)) * 280)}, 70%, 60%)`;
+    }
+  }
+}
+
+function buildLobbyCustomList() {
+  const container = document.getElementById('lobbyCustomList');
+  if (!container) return;
+  container.innerHTML = '';
+  if (!lobbyCustomPresets) return;
+
+  // Separator with + before first item
+  container.appendChild(makeSeparatorRow(0));
+
+  for (let i = 0; i < lobbyCustomPresets.length; i++) {
+    const preset = lobbyCustomPresets[i];
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:4px;padding:3px 0;position:relative;';
+
+    // X button to remove (gray, not color-coded)
+    const xBtn = document.createElement('span');
+    xBtn.textContent = '×';
+    xBtn.style.cssText = 'cursor:pointer;color:rgba(255,255,255,0.2);font-size:0.9rem;line-height:1;user-select:none;width:12px;text-align:center;flex-shrink:0;';
+    xBtn.onmouseenter = () => { xBtn.style.color = 'rgba(255,255,255,0.6)'; };
+    xBtn.onmouseleave = () => { xBtn.style.color = 'rgba(255,255,255,0.2)'; };
+    xBtn.onclick = () => {
+      if (lobbyCustomPresets.length <= 1) return;
+      lobbyCustomPresets.splice(i, 1);
+      recolorCustomPresets();
+      document.getElementById('lobbyPresetCount').value = lobbyCustomPresets.length;
+      buildLobbyCustomList();
+      sendLobbyConfig();
+      updateLobbyPreview();
+    };
+    row.appendChild(xBtn);
+
+    // Part name (clickable for dropdown)
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = preset.label;
+    nameSpan.style.cssText = `font-size:0.75rem;color:${preset.color};cursor:pointer;font-weight:bold;flex:1;min-width:60px;`;
+    nameSpan.onclick = (e) => {
+      e.stopPropagation();
+      showLobbyPresetDropdown(nameSpan, i);
+    };
+    row.appendChild(nameSpan);
+
+    // Range fields
+    const makeField = (endpoint) => {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.value = noteName(preset.range[endpoint === 'low' ? 0 : 1]);
+      inp.style.cssText = 'width:30px;text-align:center;font-size:0.6rem;background:transparent;border:1px solid rgba(255,255,255,0.15);border-radius:3px;color:#888;padding:1px 2px;outline:none;flex-shrink:0;';
+      inp.onfocus = () => { inp.style.borderColor = 'rgba(255,255,255,0.5)'; };
+      inp.onblur = () => {
+        inp.style.borderColor = 'rgba(255,255,255,0.15)';
+        const midi = parseNoteName(inp.value);
+        if (midi !== null && midi >= 21 && midi <= 108) {
+          preset.range[endpoint === 'low' ? 0 : 1] = midi;
+          inp.value = noteName(midi);
+          sendLobbyConfig();
+          updateLobbyPreview();
+        } else {
+          inp.value = noteName(preset.range[endpoint === 'low' ? 0 : 1]);
+        }
+      };
+      inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); };
+      return inp;
+    };
+    row.appendChild(makeField('low'));
+    const dash = document.createElement('span');
+    dash.textContent = '–';
+    dash.style.cssText = 'font-size:0.6rem;color:#555;flex-shrink:0;';
+    row.appendChild(dash);
+    row.appendChild(makeField('high'));
+
+    container.appendChild(row);
+
+    // Separator with + after this item
+    container.appendChild(makeSeparatorRow(i + 1));
+  }
+}
+
+function makeSeparatorRow(insertIndex) {
+  // A row with: ——— + ——— (horizontal lines with a + in the gap)
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;align-items:center;height:14px;padding:0 14px 0 12px;';
+
+  const lineStyle = 'flex:1;height:1px;background:rgba(255,255,255,0.06);';
+
+  const leftLine = document.createElement('div');
+  leftLine.style.cssText = lineStyle;
+  row.appendChild(leftLine);
+
+  const plus = document.createElement('span');
+  plus.textContent = '+';
+  plus.style.cssText = 'cursor:pointer;color:rgba(255,255,255,0.15);font-size:0.7rem;line-height:1;user-select:none;padding:0 6px;flex-shrink:0;';
+  plus.onmouseenter = () => { plus.style.color = 'rgba(255,255,255,0.5)'; };
+  plus.onmouseleave = () => { plus.style.color = 'rgba(255,255,255,0.15)'; };
+  plus.onclick = () => {
+    const above = lobbyCustomPresets[insertIndex - 1];
+    const below = lobbyCustomPresets[insertIndex];
+    const aboveMid = above ? (above.range[0] + above.range[1]) / 2 : 36;
+    const belowMid = below ? (below.range[0] + below.range[1]) / 2 : 96;
+    const newPreset = findBestPresetBetween(aboveMid, belowMid);
+    lobbyCustomPresets.splice(insertIndex, 0, newPreset);
+    recolorCustomPresets();
+    document.getElementById('lobbyPresetCount').value = lobbyCustomPresets.length;
+    buildLobbyCustomList();
+    sendLobbyConfig();
+    updateLobbyPreview();
+  };
+  row.appendChild(plus);
+
+  const rightLine = document.createElement('div');
+  rightLine.style.cssText = lineStyle;
+  row.appendChild(rightLine);
+
+  return row;
+}
+
+function showLobbyPresetDropdown(anchor, presetIndex) {
+  // Close any existing lobby dropdown
+  document.querySelectorAll('.lobby-preset-dropdown').forEach(d => d.remove());
+
+  const itemStyle = 'padding:5px 10px;cursor:pointer;font-size:0.7rem;color:#ccc;text-align:left;white-space:nowrap;';
+  const dropdownStyle = 'background:#1e1e2e;border:1px solid #444;border-radius:6px;z-index:200;min-width:120px;overflow:visible;box-shadow:0 4px 12px rgba(0,0,0,0.5);';
+
+  function applyChoice(key, choiceLabel) {
+    const preset = lobbyCustomPresets[presetIndex];
+    preset.label = choiceLabel;
+    preset.id = key;
+    const range = lookupRange(key);
+    if (range) preset.range = [...range];
+    recolorCustomPresets();
+    buildLobbyCustomList();
+    sendLobbyConfig();
+    updateLobbyPreview();
+  }
+
+  function buildMenu(entries, posStyle) {
+    const menu = document.createElement('div');
+    menu.className = 'lobby-preset-dropdown';
+    menu.style.cssText = posStyle + dropdownStyle;
+    for (const entry of entries) {
+      const item = document.createElement('div');
+      item.style.cssText = itemStyle + 'display:flex;align-items:center;justify-content:space-between;position:relative;';
+      const textSpan = document.createElement('span');
+      textSpan.textContent = entry.label;
+      item.appendChild(textSpan);
+
+      if (entry.subs === null) {
+        // "Custom" — start text input
+        item.onclick = (ev) => {
+          ev.stopPropagation();
+          menu.remove();
+          // Convert name span to an input
+          const preset = lobbyCustomPresets[presetIndex];
+          const inp = document.createElement('input');
+          inp.type = 'text';
+          inp.value = preset.label;
+          inp.style.cssText = 'font-size:0.7rem;background:transparent;border:1px solid #555;border-radius:3px;color:#ccc;padding:1px 4px;outline:none;width:80px;';
+          inp.onblur = () => {
+            preset.label = inp.value || preset.label;
+            preset.id = preset.label.toLowerCase().replace(/[^a-z0-9]/g, '');
+            buildLobbyCustomList();
+            sendLobbyConfig();
+            updateLobbyPreview();
+          };
+          inp.onkeydown = (e) => { if (e.key === 'Enter') inp.blur(); if (e.key === 'Escape') { inp.value = preset.label; inp.blur(); } };
+          anchor.replaceWith(inp);
+          inp.focus();
+          inp.select();
+        };
+      } else if (entry.key) {
+        // Leaf item
+        item.onclick = (ev) => {
+          ev.stopPropagation();
+          document.querySelectorAll('.lobby-preset-dropdown').forEach(d => d.remove());
+          applyChoice(entry.key, entry.label);
+        };
+      } else if (entry.subs) {
+        // Has submenu
+        const arrow = document.createElement('span');
+        arrow.textContent = ' ▸';
+        arrow.style.cssText = 'font-size:0.6rem;color:#666;margin-left:6px;';
+        item.appendChild(arrow);
+        let subMenu = null;
+        item.onmouseenter = () => {
+          item.style.background = 'rgba(255,255,255,0.1)';
+          if (!subMenu) {
+            subMenu = buildMenu(entry.subs, 'position:absolute;left:100%;top:0;');
+            item.appendChild(subMenu);
+          } else {
+            subMenu.style.display = 'block';
+          }
+        };
+        item.onmouseleave = () => {
+          item.style.background = 'transparent';
+          if (subMenu) subMenu.style.display = 'none';
+        };
+      }
+
+      if (!entry.subs || entry.subs === null) {
+        item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.1)'; };
+        item.onmouseleave = () => { item.style.background = 'transparent'; };
+      }
+
+      menu.appendChild(item);
+    }
+    return menu;
+  }
+
+  const dd = buildMenu(LOBBY_PRESETS_MENU, 'position:absolute;top:100%;left:0;');
+  anchor.style.position = 'relative';
+  anchor.parentElement.style.position = 'relative';
+  anchor.parentElement.appendChild(dd);
+
+  const closeHandler = (ev) => {
+    if (!ev.target.closest('.lobby-preset-dropdown')) {
+      document.querySelectorAll('.lobby-preset-dropdown').forEach(d => d.remove());
+      document.removeEventListener('click', closeHandler);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closeHandler), 0);
+}
+
+function updateLobbyPreview() {
+  const preview = document.getElementById('lobbyPreview');
+  if (!preview) return;
+  preview.innerHTML = '';
+
+  // Name field (only shown on lobby preview for top/bottom positions)
+  const showNameOnLobby = lobbyNameMode !== 'off' && (lobbyNamePosition === 'top' || lobbyNamePosition === 'bottom');
+  if (showNameOnLobby && lobbyNamePosition === 'top') {
+    const nameField = document.createElement('div');
+    nameField.style.cssText = 'background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:4px 8px;font-size:0.7rem;color:#555;margin-bottom:6px;';
+    nameField.textContent = lobbyNameMode === 'required' ? 'Your name' : 'Your name (optional)';
+    preview.appendChild(nameField);
+  }
+
+  // Range row
+  const rangeRow = document.createElement('div');
+  rangeRow.style.cssText = 'font-size:0.65rem;color:#888;margin-bottom:4px;';
+  rangeRow.textContent = 'Range: [—] to [—]';
+  preview.appendChild(rangeRow);
+
+  // Preset text
+  const presetText = document.createElement('div');
+  presetText.style.cssText = 'font-size:0.6rem;color:#666;margin-bottom:4px;';
+  presetText.textContent = 'Or start with a preset:';
+  preview.appendChild(presetText);
+
+  // Preset buttons
+  const presets = getLobbyPresets();
+  const grid = document.createElement('div');
+  const cols = presets.length <= 4 ? 2 : (presets.length <= 6 ? 3 : 4);
+  grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px;margin-bottom:6px;`;
+  for (const p of presets) {
+    const btn = document.createElement('div');
+    btn.style.cssText = `background:${p.color}22;color:${p.color};font-size:0.6rem;font-weight:bold;padding:4px 2px;border-radius:4px;text-align:center;`;
+    btn.textContent = p.label;
+    grid.appendChild(btn);
+  }
+  preview.appendChild(grid);
+
+  // Name field at bottom
+  if (showNameOnLobby && lobbyNamePosition === 'bottom') {
+    const nameField = document.createElement('div');
+    nameField.style.cssText = 'background:#16213e;border:1px solid #0f3460;border-radius:6px;padding:4px 8px;font-size:0.7rem;color:#555;margin-bottom:6px;';
+    nameField.textContent = lobbyNameMode === 'required' ? 'Your name' : 'Your name (optional)';
+    preview.appendChild(nameField);
+  }
+
+  // Join button
+  const joinBtn = document.createElement('div');
+  joinBtn.style.cssText = 'background:#e94560;color:white;font-size:0.65rem;font-weight:bold;padding:4px 8px;border-radius:6px;opacity:0.4;';
+  joinBtn.textContent = 'Join';
+  preview.appendChild(joinBtn);
 }
 
 // === Build master display dynamically ===
@@ -996,6 +1652,8 @@ function buildMasterDisplay() {
 
   const volControls = document.getElementById('volControls');
   if (volControls) volControls.style.display = '';
+  const masterVolWrap = document.getElementById('masterVolBarWrap');
+  if (masterVolWrap) masterVolWrap.style.display = '';
 
   const n = activeParts.length;
   const useRows = n > 6;
@@ -1051,7 +1709,12 @@ function createPartColumn(part) {
   label.style.cursor = 'pointer';
 
   // Inline editing on label click
+  // Show/hide range row when editing this part
+  const showRangeRow = () => { const rr = col.querySelector('.part-range-row'); if (rr) rr.style.display = 'flex'; };
+  const hideRangeRow = () => { const rr = col.querySelector('.part-range-row'); if (rr) rr.style.display = 'none'; };
+
   const startEditing = () => {
+    showRangeRow();
     const input = document.createElement('input');
     input.type = 'text';
     input.value = part.label;
@@ -1065,6 +1728,7 @@ function createPartColumn(part) {
       caret.style.display = '';
       input.remove();
       sendPartConfig();
+      hideRangeRow();
     };
     input.onkeydown = (e) => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { input.value = part.label; input.blur(); } };
     label.style.display = 'none';
@@ -1086,9 +1750,10 @@ function createPartColumn(part) {
     e.stopPropagation();
     // Remove any existing dropdown
     const old = col.querySelector('.part-preset-dropdown');
-    if (old) { old.remove(); return; }
+    if (old) { old.remove(); hideRangeRow(); return; }
     // Close other dropdowns
     document.querySelectorAll('.part-preset-dropdown').forEach(d => d.remove());
+    showRangeRow();
 
     const PRESETS = [
       { label: 'Bass', subs: [
@@ -1121,6 +1786,62 @@ function createPartColumn(part) {
         { label: 'Soprano I', key: 'soprano1' },
         { label: 'Soprano II', key: 'soprano2' },
       ]},
+      { label: 'Instruments', subs: [
+        { label: 'Strings', subs: [
+          { label: 'Violin', key: 'violin' },
+          { label: 'Viola', key: 'viola' },
+          { label: 'Cello', key: 'cello' },
+          { label: 'Double Bass', key: 'doublebass' },
+          { label: 'Harp', key: 'harp' },
+          { label: 'Mandolin', key: 'mandolin' },
+        ]},
+        { label: 'Brass', subs: [
+          { label: 'Trumpet', key: 'trumpet' },
+          { label: 'French Horn', key: 'frenchhorn' },
+          { label: 'Trombone', key: 'trombone' },
+          { label: 'Bass Trombone', key: 'basstrombone' },
+          { label: 'Tuba', key: 'tuba' },
+          { label: 'Euphonium', key: 'euphonium' },
+          { label: 'Flugelhorn', key: 'flugelhorn' },
+          { label: 'Cornet', key: 'cornet' },
+        ]},
+        { label: 'Woodwinds', subs: [
+          { label: 'Piccolo', key: 'piccolo' },
+          { label: 'Flute', key: 'flute' },
+          { label: 'Oboe', key: 'oboe' },
+          { label: 'Clarinet', key: 'clarinet' },
+          { label: 'Bass Clarinet', key: 'bassclarinet' },
+          { label: 'Bassoon', key: 'bassoon' },
+          { label: 'Contrabassoon', key: 'contrabassoon' },
+          { label: 'Alto Sax', key: 'saxophone' },
+          { label: 'Tenor Sax', key: 'tenorsax' },
+          { label: 'Soprano Sax', key: 'sopranosax' },
+          { label: 'Bari Sax', key: 'barisax' },
+          { label: 'Recorder', key: 'recorder' },
+        ]},
+        { label: 'Rhythm Section', subs: [
+          { label: 'Guitar', key: 'guitar' },
+          { label: 'Bass Guitar', key: 'bassguitar' },
+          { label: 'Banjo', key: 'banjo' },
+          { label: 'Ukulele', key: 'ukulele' },
+          { label: 'Piano', key: 'piano' },
+          { label: 'Melodica', key: 'melodica' },
+        ]},
+        { label: 'Other', subs: [
+          { label: 'Accordion', key: 'accordion' },
+          { label: 'Harmonica', key: 'harmonica' },
+          { label: 'Steel Drum', key: 'steeldrum' },
+          { label: 'Xylophone', key: 'xylophone' },
+          { label: 'Marimba', key: 'marimba' },
+          { label: 'Vibraphone', key: 'vibraphone' },
+          { label: 'Glockenspiel', key: 'glockenspiel' },
+          { label: 'Celesta', key: 'celesta' },
+          { label: 'Pipe Organ', key: 'organpipe' },
+          { label: 'Bagpipes', key: 'bagpipes' },
+          { label: 'Sitar', key: 'sitar' },
+          { label: 'Erhu', key: 'erhu' },
+        ]},
+      ]},
       { label: 'Custom', subs: null },
     ];
 
@@ -1131,7 +1852,7 @@ function createPartColumn(part) {
       part.label = presetLabel;
       part.shortLabel = presetLabel.length <= 3 ? presetLabel : presetLabel.substring(0, 3);
       label.textContent = part.label;
-      const range = VOCAL_RANGES[key];
+      const range = VOCAL_RANGES[key] || INSTRUMENT_RANGES[key];
       if (range) {
         part.paradigmaticRange = [...range];
         const rangeInputs = col.querySelectorAll('.part-range-field');
@@ -1145,61 +1866,57 @@ function createPartColumn(part) {
       buildRangeIndicators();
     }
 
-    const dropdown = document.createElement('div');
-    dropdown.className = 'part-preset-dropdown';
-    dropdown.style.cssText = 'position:absolute;top:100%;left:50%;transform:translateX(-50%);' + dropdownStyle;
+    function buildMenu(entries, posStyle) {
+      const menu = document.createElement('div');
+      menu.className = 'part-preset-dropdown';
+      menu.style.cssText = posStyle + dropdownStyle;
+      for (const entry of entries) {
+        const item = document.createElement('div');
+        item.style.cssText = itemStyle + 'display:flex;align-items:center;justify-content:space-between;position:relative;';
+        const textSpan = document.createElement('span');
+        textSpan.textContent = entry.label;
+        item.appendChild(textSpan);
 
-    for (const preset of PRESETS) {
-      const item = document.createElement('div');
-      item.style.cssText = itemStyle + 'display:flex;align-items:center;justify-content:space-between;position:relative;';
-      const textSpan = document.createElement('span');
-      textSpan.textContent = preset.label;
-      item.appendChild(textSpan);
-
-      if (preset.subs) {
-        const arrow = document.createElement('span');
-        arrow.textContent = '▸';
-        arrow.style.cssText = 'margin-left:8px;opacity:0.5;font-size:0.65rem;';
-        item.appendChild(arrow);
-
-        // Sub-menu
-        const subMenu = document.createElement('div');
-        subMenu.className = 'part-preset-dropdown';
-        subMenu.style.cssText = 'position:absolute;left:100%;top:-1px;display:none;' + dropdownStyle;
-        for (const sub of preset.subs) {
-          const subItem = document.createElement('div');
-          subItem.textContent = sub.label;
-          subItem.style.cssText = itemStyle;
-          subItem.onmouseenter = () => { subItem.style.background = 'rgba(255,255,255,0.1)'; };
-          subItem.onmouseleave = () => { subItem.style.background = 'transparent'; };
-          subItem.onclick = (ev) => {
+        if (entry.subs) {
+          const arrow = document.createElement('span');
+          arrow.textContent = '▸';
+          arrow.style.cssText = 'margin-left:8px;opacity:0.5;font-size:0.65rem;';
+          item.appendChild(arrow);
+          const subMenu = buildMenu(entry.subs, 'position:absolute;left:100%;top:-1px;display:none;');
+          item.appendChild(subMenu);
+          item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.1)'; subMenu.style.display = 'block'; };
+          item.onmouseleave = () => { item.style.background = 'transparent'; subMenu.style.display = 'none'; };
+        } else if (entry.key) {
+          item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.1)'; };
+          item.onmouseleave = () => { item.style.background = 'transparent'; };
+          item.onclick = (ev) => {
             ev.stopPropagation();
             dropdown.remove();
-            applyPreset(sub.key, sub.label);
+            applyPreset(entry.key, entry.label);
           };
-          subMenu.appendChild(subItem);
+        } else {
+          // Custom — no key, no subs
+          item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.1)'; };
+          item.onmouseleave = () => { item.style.background = 'transparent'; };
+          item.onclick = (ev) => {
+            ev.stopPropagation();
+            dropdown.remove();
+            startEditing();
+          };
         }
-        item.appendChild(subMenu);
-        item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.1)'; subMenu.style.display = 'block'; };
-        item.onmouseleave = () => { item.style.background = 'transparent'; subMenu.style.display = 'none'; };
-      } else {
-        item.onmouseenter = () => { item.style.background = 'rgba(255,255,255,0.1)'; };
-        item.onmouseleave = () => { item.style.background = 'transparent'; };
-        item.onclick = (ev) => {
-          ev.stopPropagation();
-          dropdown.remove();
-          startEditing();
-        };
+        menu.appendChild(item);
       }
-      dropdown.appendChild(item);
+      return menu;
     }
 
+    const dropdown = buildMenu(PRESETS, 'position:absolute;top:100%;left:50%;transform:translateX(-50%);');
     labelRow.appendChild(dropdown);
 
     // Close dropdown on outside click
     const closeHandler = (ev) => {
       if (!dropdown.contains(ev.target) && ev.target !== caret) {
         dropdown.remove();
+        hideRangeRow();
         document.removeEventListener('click', closeHandler);
       }
     };
@@ -1263,8 +1980,9 @@ function createPartColumn(part) {
   sylCaret.onclick = (e) => {
     e.stopPropagation();
     const old = col.querySelector('.syl-preset-dropdown');
-    if (old) { old.remove(); return; }
+    if (old) { old.remove(); hideRangeRow(); return; }
     document.querySelectorAll('.syl-preset-dropdown').forEach(d => d.remove());
+    showRangeRow();
 
     const SYL_OPTIONS = [
       ...syllables.map((s, i) => ({ label: s.text, index: i })),
@@ -1285,6 +2003,7 @@ function createPartColumn(part) {
       item.onclick = (ev) => {
         ev.stopPropagation();
         dd.remove();
+        hideRangeRow();
         partSyllables[part.id] = opt.index;
         updateMasterSyllables();
         startMasterPulse();
@@ -1297,6 +2016,7 @@ function createPartColumn(part) {
     const closeHandler = (ev) => {
       if (!dd.contains(ev.target) && ev.target !== sylCaret) {
         dd.remove();
+        hideRangeRow();
         document.removeEventListener('click', closeHandler);
       }
     };
@@ -1312,9 +2032,10 @@ function createPartColumn(part) {
   note.textContent = '';
   col.appendChild(note);
 
-  // Paradigmatic range fields
+  // Paradigmatic range fields (hidden by default, shown when editing this part)
   const rangeRow = document.createElement('div');
-  rangeRow.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:3px;font-size:0.65rem;color:#888;margin:2px 0;';
+  rangeRow.className = 'part-range-row';
+  rangeRow.style.cssText = 'display:none;align-items:center;justify-content:center;gap:3px;font-size:0.65rem;color:#888;margin:2px 0;';
   const makeRangeInput = (endpoint) => {
     const inp = document.createElement('input');
     inp.type = 'text';
@@ -1367,6 +2088,8 @@ function createPartColumn(part) {
   countInput.min = 0;
   countInput.max = singers.length;
   countInput.style.cssText = 'width:28px;text-align:center;font-size:1.2rem;font-weight:bold;background:transparent;border:none;color:inherit;padding:0;-moz-appearance:textfield;';
+  countInput.onfocus = () => { showRangeRow(); };
+  countInput.onblur = () => { hideRangeRow(); };
   countInput.onchange = (e) => {
     const val = Math.max(0, Math.min(singers.length, parseInt(e.target.value) || 0));
     setPartCount(part.id, val);
@@ -1383,14 +2106,23 @@ function createPartColumn(part) {
 
   col.appendChild(countRow);
 
-  // Volume bar
+  // Volume bar (clickable)
   const volWrap = document.createElement('div');
   volWrap.className = 'vol-bar-wrap';
+  volWrap.style.cursor = 'pointer';
   const volBar = document.createElement('div');
   volBar.className = 'vol-bar';
   volBar.style.height = (partVolumes[part.id] || 50) + '%';
   volBar.style.background = part.color;
+  volBar.style.pointerEvents = 'none';
   volWrap.appendChild(volBar);
+  volWrap.addEventListener('click', (e) => {
+    const rect = volWrap.getBoundingClientRect();
+    const pct = Math.round(Math.max(0, Math.min(100, ((rect.bottom - e.clientY) / rect.height) * 100)));
+    partVolumes[part.id] = pct;
+    updateVolumeBars();
+    sendVolume();
+  });
   col.appendChild(volWrap);
 
   return col;
@@ -1682,6 +2414,18 @@ function updateIndicators() {
 
 // === Volume system ===
 
+// Master volume bar click handler
+document.getElementById('masterVolBarWrap')?.addEventListener('click', (e) => {
+  const wrap = document.getElementById('masterVolBarWrap');
+  const rect = wrap.getBoundingClientRect();
+  const pct = Math.round(Math.max(0, Math.min(100, ((rect.bottom - e.clientY) / rect.height) * 100)));
+  for (const part of activeParts) {
+    partVolumes[part.id] = pct;
+  }
+  updateVolumeBars();
+  sendVolume();
+});
+
 function resetVolumes() {
   for (const part of activeParts) {
     partVolumes[part.id] = 50;
@@ -1700,9 +2444,16 @@ function adjustVolume(delta) {
 }
 
 function updateVolumeBars() {
+  let sum = 0;
   for (const part of activeParts) {
+    const vol = partVolumes[part.id] || 50;
+    sum += vol;
     const el = getPartEl(part.id, 'vol-bar');
-    if (el) el.style.height = (partVolumes[part.id] || 50) + '%';
+    if (el) el.style.height = vol + '%';
+  }
+  const masterBar = document.getElementById('masterVolBar');
+  if (masterBar && activeParts.length > 0) {
+    masterBar.style.height = Math.round(sum / activeParts.length) + '%';
   }
 }
 
@@ -2639,56 +3390,82 @@ function parseColor(color) {
 // Range indicators
 function buildRangeIndicators() {
   const container = document.getElementById('rangeIndicators');
-  if (!container) return;
-  container.innerHTML = '';
-  const pianoStart = 48, pianoEnd = 72;
+  const choirContainer = document.getElementById('choirRangeIndicators');
 
-  const blackSet = new Set([1,3,6,8,10]);
-  const whitePositions = {};
-  let whiteIdx = 0;
-  for (let m = pianoStart; m <= pianoEnd; m++) {
-    if (!blackSet.has(m % 12)) {
-      whitePositions[m] = whiteIdx;
-      whiteIdx++;
+  // Piano range indicators
+  if (container) {
+    container.innerHTML = '';
+    const pianoStart = 48, pianoEnd = 72;
+
+    const blackSet = new Set([1,3,6,8,10]);
+    const whitePositions = {};
+    let whiteIdx = 0;
+    for (let m = pianoStart; m <= pianoEnd; m++) {
+      if (!blackSet.has(m % 12)) {
+        whitePositions[m] = whiteIdx;
+        whiteIdx++;
+      }
+    }
+    const totalWhite = whiteIdx;
+
+    function midiToLeftPct(midi) {
+      const clamped = Math.max(pianoStart, Math.min(pianoEnd, midi));
+      if (whitePositions[clamped] !== undefined) return whitePositions[clamped] / totalWhite * 100;
+      const lower = clamped - 1, upper = clamped + 1;
+      if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined)
+        return (whitePositions[lower] + whitePositions[upper]) / 2 / totalWhite * 100;
+      return (clamped - pianoStart) / (pianoEnd - pianoStart) * 100;
+    }
+
+    function midiToRightPct(midi) {
+      const clamped = Math.max(pianoStart, Math.min(pianoEnd, midi));
+      if (whitePositions[clamped] !== undefined) return (whitePositions[clamped] + 1) / totalWhite * 100;
+      const lower = clamped - 1, upper = clamped + 1;
+      if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined)
+        return ((whitePositions[lower] + whitePositions[upper]) / 2 + 1) / totalWhite * 100;
+      return (clamped - pianoStart + 1) / (pianoEnd - pianoStart) * 100;
+    }
+
+    const lineH = 2, gap = 2;
+    for (let i = 0; i < activeParts.length; i++) {
+      const part = activeParts[i];
+      const [lo, hi] = part.paradigmaticRange || part.range;
+      const clampedLo = Math.max(pianoStart, lo);
+      const clampedHi = Math.min(pianoEnd, hi);
+      const leftPct = midiToLeftPct(clampedLo);
+      const rightPct = midiToRightPct(clampedHi);
+
+      const line = document.createElement('div');
+      line.className = 'range-line';
+      line.style.background = part.color;
+      line.style.left = leftPct + '%';
+      line.style.width = (rightPct - leftPct) + '%';
+      line.style.bottom = (i * (lineH + gap)) + 'px';
+      container.appendChild(line);
     }
   }
-  const totalWhite = whiteIdx;
 
-  function midiToLeftPct(midi) {
-    const clamped = Math.max(pianoStart, Math.min(pianoEnd, midi));
-    if (whitePositions[clamped] !== undefined) return whitePositions[clamped] / totalWhite * 100;
-    const lower = clamped - 1, upper = clamped + 1;
-    if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined)
-      return (whitePositions[lower] + whitePositions[upper]) / 2 / totalWhite * 100;
-    return (clamped - pianoStart) / (pianoEnd - pianoStart) * 100;
-  }
+  // Choir viz range indicators (linear MIDI mapping, VIZ_LO to VIZ_HI)
+  if (choirContainer) {
+    choirContainer.innerHTML = '';
+    const totalNotes = VIZ_HI - VIZ_LO + 1;
+    const lineH = 2, gap = 2;
+    for (let i = 0; i < activeParts.length; i++) {
+      const part = activeParts[i];
+      const [lo, hi] = part.paradigmaticRange || part.range;
+      const clampedLo = Math.max(VIZ_LO, lo);
+      const clampedHi = Math.min(VIZ_HI, hi);
+      const leftPct = ((clampedLo - VIZ_LO) / totalNotes) * 100;
+      const widthPct = ((clampedHi - clampedLo + 1) / totalNotes) * 100;
 
-  function midiToRightPct(midi) {
-    const clamped = Math.max(pianoStart, Math.min(pianoEnd, midi));
-    if (whitePositions[clamped] !== undefined) return (whitePositions[clamped] + 1) / totalWhite * 100;
-    const lower = clamped - 1, upper = clamped + 1;
-    if (whitePositions[lower] !== undefined && whitePositions[upper] !== undefined)
-      return ((whitePositions[lower] + whitePositions[upper]) / 2 + 1) / totalWhite * 100;
-    return (clamped - pianoStart + 1) / (pianoEnd - pianoStart) * 100;
-  }
-
-  const lineH = 2, gap = 2;
-
-  for (let i = 0; i < activeParts.length; i++) {
-    const part = activeParts[i];
-    const [lo, hi] = part.paradigmaticRange || part.range;
-    const clampedLo = Math.max(pianoStart, lo);
-    const clampedHi = Math.min(pianoEnd, hi);
-    const leftPct = midiToLeftPct(clampedLo);
-    const rightPct = midiToRightPct(clampedHi);
-
-    const line = document.createElement('div');
-    line.className = 'range-line';
-    line.style.background = part.color;
-    line.style.left = leftPct + '%';
-    line.style.width = (rightPct - leftPct) + '%';
-    line.style.bottom = (i * (lineH + gap)) + 'px';
-    container.appendChild(line);
+      const line = document.createElement('div');
+      line.className = 'range-line';
+      line.style.background = part.color;
+      line.style.left = leftPct + '%';
+      line.style.width = widthPct + '%';
+      line.style.bottom = (i * (lineH + gap)) + 'px';
+      choirContainer.appendChild(line);
+    }
   }
 }
 

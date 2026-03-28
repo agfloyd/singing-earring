@@ -25,6 +25,8 @@ MIME_TYPES = {
 
 # Room storage
 rooms: dict = {}
+# Default lobby config: presets from active parts, show name field
+DEFAULT_LOBBY = {"nameMode": "optional", "namePosition": "top", "presets": None}  # None = use active parts
 
 CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ"
 
@@ -131,14 +133,32 @@ async def handler(websocket):
                     if code in rooms:
                         rooms[code]["conductor"] = websocket
                     else:
-                        rooms[code] = {"conductor": websocket, "singers": {}, "next_id": 0}
+                        rooms[code] = {"conductor": websocket, "singers": {}, "next_id": 0, "lobby": {"nameMode": "optional", "namePosition": "top", "presets": None}}
                 else:
                     code = generate_code()
-                    rooms[code] = {"conductor": websocket, "singers": {}, "next_id": 0}
+                    rooms[code] = {"conductor": websocket, "singers": {}, "next_id": 0, "lobby": {"nameMode": "optional", "namePosition": "top", "presets": None}}
                 my_room = rooms[code]
                 my_code = code
                 my_role = "conductor"
                 await websocket.send(json.dumps({"t": "created", "code": code, "ip": get_local_ip(), "port": PORT}))
+
+            elif t == "check":
+                # Singer checking if room exists before joining — return lobby config
+                code = (msg.get("code") or "").upper()
+                room = rooms.get(code)
+                if not room:
+                    if TEST_MODE:
+                        rooms[code] = {"conductor": None, "singers": {}, "next_id": 0, "lobby": {"nameMode": "optional", "namePosition": "top", "presets": None}}
+                        room = rooms[code]
+                    else:
+                        await websocket.send(json.dumps({"t": "error", "msg": "Room not found"}))
+                        continue
+                lobby = room.get("lobby", {"nameMode": "optional", "namePosition": "top", "presets": None})
+                presets = lobby.get("presets")
+                # If presets is None, derive from cached part config
+                if presets is None and "partConfig" in room:
+                    presets = [{"id": p["id"], "label": p.get("label", p["id"]), "color": p.get("color", "#888"), "range": p.get("range")} for p in room["partConfig"]]
+                await websocket.send(json.dumps({"t": "lobby", "code": code, "nameMode": lobby.get("nameMode", "optional"), "namePosition": lobby.get("namePosition", "top"), "presets": presets}))
 
             elif t == "join":
                 code = (msg.get("code") or "").upper()
@@ -171,7 +191,21 @@ async def handler(websocket):
                 await websocket.send(json.dumps({"t": "joined", "code": code, "id": singer_id, "name": name}))
                 broadcast_room_state(room, code)
 
+            elif t == "lobbyConfig" and my_role == "conductor" and my_room:
+                # Conductor updating lobby configuration
+                lobby = my_room.get("lobby", {})
+                if "nameMode" in msg:
+                    lobby["nameMode"] = msg["nameMode"]
+                if "namePosition" in msg:
+                    lobby["namePosition"] = msg["namePosition"]
+                if "presets" in msg:
+                    lobby["presets"] = msg["presets"]  # list of {id, label, color, range} or None
+                my_room["lobby"] = lobby
+
             elif t in ("n", "syl", "vol", "parts") and my_role == "conductor" and my_room:
+                if t == "parts":
+                    # Cache part config on the room for lobby presets
+                    my_room["partConfig"] = msg.get("parts", [])
                 raw_msg = json.dumps(msg)
                 websockets.broadcast(list(my_room["singers"].keys()), raw_msg)
 
