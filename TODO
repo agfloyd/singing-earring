@@ -3,3 +3,4 @@
 3. Split keyboard option.
 4. Selectable tones
 5. Change range visualization horizontal lines to be on the choir visualization
+6. Conductor can save preset chords to particular keys / key combinations (e.g. when playing Sunday morning, pressing 1 makes a Cmaj7 chord instead of C major.)

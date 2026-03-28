@@ -61,10 +61,10 @@
   .choir-sq::before { content: ''; position: absolute; top: -12px; bottom: -12px; left: 0; right: 0; }
   .choir-sq::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: #222; color: #ddd; font-size: 0.7rem; padding: 4px 6px; border-radius: 4px; white-space: pre; pointer-events: none; opacity: 0; transition: opacity 0.15s; z-index: 10; line-height: 1.3; }
   .choir-sq:hover::after { opacity: 1; transition-delay: 0.25s; }
-  .syl-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 6px; background: #222; cursor: pointer; font-size: 1.8rem; color: #888; transition: all 0.15s; border: 2px solid transparent; }
+  .syl-btn { display: inline-flex; align-items: center; gap: 3px; padding: 1px 4px; border-radius: 5px; background: #222; cursor: pointer; font-size: 1.1rem; color: #888; transition: all 0.15s; border: 2px solid transparent; }
   .syl-btn.active { background: #e94560; color: white; border-color: #e94560; }
-  .syl-key { font-size: 1.8rem; color: rgba(255,255,255,0.35); }
-  .syl-input { background: transparent; border: none; color: inherit; font: inherit; width: 3.5em; text-align: center; outline: none; padding: 0; }
+  .syl-key { font-size: 1.1rem; color: rgba(255,255,255,0.35); }
+  .syl-input { background: transparent; border: none; color: inherit; font: inherit; width: 3em; text-align: center; outline: none; padding: 0; }
   .syl-input:focus { border-bottom: 1px solid currentColor; }
   .bpm-control { display: flex; align-items: center; gap: 8px; font-size: 1.8rem; color: #888; }
   .bpm-control button { padding: 2px 8px; font-size: 1.8rem; border-radius: 6px; }
@@ -112,64 +112,7 @@
     <div id="choirSquares" style="display:flex;margin-top:2px;"></div>
   </div>
 
-  <!-- Customize Lobby View -->
-  <div style="margin-top:8px;">
-    <button id="lobbyToggleBtn" onclick="toggleLobbyPanel()" style="font-size:0.7rem;padding:3px 10px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;">Customize Lobby View ▸</button>
-  </div>
-  <div id="lobbyPanel" style="display:none;margin-top:8px;background:rgba(255,255,255,0.03);border:1px solid #333;border-radius:8px;padding:12px;">
-    <div style="display:flex;gap:16px;align-items:flex-start;">
-      <!-- Controls -->
-      <div style="flex:1;min-width:260px;">
-        <div style="font-size:0.8rem;color:#aaa;margin-bottom:6px;font-weight:bold;">Name Field</div>
-        <div style="display:flex;gap:16px;margin-bottom:10px;">
-          <div style="display:flex;flex-direction:column;gap:3px;" id="nameModeBtns">
-            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
-              <input type="radio" name="nameMode" value="off" onchange="onNameModeChange()"> Off
-            </label>
-            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
-              <input type="radio" name="nameMode" value="optional" checked onchange="onNameModeChange()"> Optional
-            </label>
-            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
-              <input type="radio" name="nameMode" value="required" onchange="onNameModeChange()"> Required
-            </label>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:3px;" id="namePositionBtns">
-            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
-              <input type="radio" name="namePosition" value="before" onchange="onNamePositionChange()"> Before lobby screen
-            </label>
-            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
-              <input type="radio" name="namePosition" value="top" checked onchange="onNamePositionChange()"> Top of lobby screen
-            </label>
-            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
-              <input type="radio" name="namePosition" value="bottom" onchange="onNamePositionChange()"> Bottom of lobby screen
-            </label>
-            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
-              <input type="radio" name="namePosition" value="after" onchange="onNamePositionChange()"> After lobby screen
-            </label>
-          </div>
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-          <span style="font-size:0.8rem;color:#aaa;font-weight:bold;">Preset buttons shown to musicians:</span>
-          <div style="display:flex;align-items:center;gap:2px;">
-            <input type="number" id="lobbyPresetCount" min="1" max="12" value="4" style="width:28px;text-align:center;font-size:0.85rem;font-weight:bold;background:transparent;border:1px solid #555;border-radius:4px;color:#ccc;padding:1px 2px;-moz-appearance:textfield;outline:none;" onchange="onLobbyCountChange(this.value)">
-            <div style="display:flex;flex-direction:column;gap:0;">
-              <button onclick="adjustLobbyCount(1)" style="font-size:0.5rem;padding:0 3px;background:transparent;border:none;color:rgba(255,255,255,0.3);cursor:pointer;line-height:1;">▲</button>
-              <button onclick="adjustLobbyCount(-1)" style="font-size:0.5rem;padding:0 3px;background:transparent;border:none;color:rgba(255,255,255,0.3);cursor:pointer;line-height:1;">▼</button>
-            </div>
-          </div>
-        </div>
-        <label id="matchPartsLabel" style="display:flex;align-items:center;gap:6px;font-size:0.75rem;color:#ccc;cursor:pointer;margin-bottom:8px;">
-          <input type="checkbox" id="lobbyMatchParts" checked onchange="toggleMatchParts()"> Match current parts
-        </label>
-        <div id="lobbyCustomList" style="display:none;max-height:280px;overflow-y:auto;"></div>
-      </div>
-      <!-- Preview -->
-      <div style="flex:1;min-width:200px;background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:12px;max-width:280px;">
-        <div style="font-size:0.7rem;color:#666;text-align:center;margin-bottom:6px;">Musician lobby preview</div>
-        <div id="lobbyPreview" style="text-align:center;"></div>
-      </div>
-    </div>
-  </div>
+
 </div>
 
 <!-- MIDI section removed; dropdown moved into keyboard section row -->
@@ -211,26 +154,96 @@
 
 <div id="controlsSection" class="section" style="display:none">
   <h2>Controls</h2>
-  <div class="controls-row">
-    <div class="syl-btn" data-idx="0" onclick="setSyllable(0)">
-      <input class="syl-input" type="text" maxlength="6" value="Shh" data-idx="0"><span class="syl-key">Z</span>
+  <div style="display:flex;align-items:flex-start;gap:12px;">
+    <div style="flex-shrink:0;">
+      <div class="controls-row" style="flex-wrap:nowrap;">
+        <div class="syl-btn" data-idx="0" onclick="setSyllable(0)">
+          <input class="syl-input" type="text" maxlength="6" value="Shh" data-idx="0"><span class="syl-key">Z</span>
+        </div>
+        <div class="syl-btn" data-idx="1" onclick="setSyllable(1)">
+          <input class="syl-input" type="text" maxlength="6" value="Bum" data-idx="1"><span class="syl-key">X</span>
+        </div>
+        <div class="syl-btn active" data-idx="2" onclick="setSyllable(2)">
+          <input class="syl-input" type="text" maxlength="6" value="Ooo" data-idx="2"><span class="syl-key">V</span>
+        </div>
+        <div class="syl-btn" data-idx="3" onclick="setSyllable(3)">
+          <input class="syl-input" type="text" maxlength="6" value="Nah" data-idx="3"><span class="syl-key">N</span>
+        </div>
+        <div class="syl-btn" data-idx="4" onclick="setSyllable(4)">
+          <input class="syl-input" type="text" maxlength="6" value="Mmm" data-idx="4"><span class="syl-key">M</span>
+        </div>
+        <div class="bpm-control" id="bpmControl" style="display:none">
+          <button onclick="adjustBpm(-5)">&lt; <span class="syl-key">,</span></button>
+          <span>BPM = </span><input class="bpm-input" id="bpmInput" type="text" inputmode="numeric" pattern="[0-9]*" value="100">
+          <button onclick="adjustBpm(5)">&gt; <span class="syl-key">.</span></button>
+        </div>
+      </div>
+      <div style="margin-top:6px;">
+        <button id="lobbyToggleBtn" onclick="toggleLobbyPanel()" style="font-size:0.7rem;padding:3px 10px;background:#333;border:1px solid #555;border-radius:4px;color:#aaa;cursor:pointer;">Customize Lobby View ▸</button>
+      </div>
     </div>
-    <div class="syl-btn" data-idx="1" onclick="setSyllable(1)">
-      <input class="syl-input" type="text" maxlength="6" value="Bum" data-idx="1"><span class="syl-key">X</span>
-    </div>
-    <div class="syl-btn active" data-idx="2" onclick="setSyllable(2)">
-      <input class="syl-input" type="text" maxlength="6" value="Ooo" data-idx="2"><span class="syl-key">V</span>
-    </div>
-    <div class="syl-btn" data-idx="3" onclick="setSyllable(3)">
-      <input class="syl-input" type="text" maxlength="6" value="Nah" data-idx="3"><span class="syl-key">N</span>
-    </div>
-    <div class="syl-btn" data-idx="4" onclick="setSyllable(4)">
-      <input class="syl-input" type="text" maxlength="6" value="Mmm" data-idx="4"><span class="syl-key">M</span>
-    </div>
-    <div class="bpm-control" id="bpmControl" style="display:none">
-      <button onclick="adjustBpm(-5)">&lt; <span class="syl-key">,</span></button>
-      <span>BPM = </span><input class="bpm-input" id="bpmInput" type="text" inputmode="numeric" pattern="[0-9]*" value="100">
-      <button onclick="adjustBpm(5)">&gt; <span class="syl-key">.</span></button>
+    <!-- Lobby Panel (expands to the right) -->
+    <div id="lobbyPanel" style="display:none;background:rgba(255,255,255,0.03);border:1px solid #333;border-radius:8px;padding:12px;max-width:520px;">
+      <div style="display:flex;gap:12px;align-items:flex-start;">
+        <!-- Controls -->
+        <div style="min-width:240px;max-width:320px;">
+          <div style="font-size:0.8rem;color:#aaa;margin-bottom:6px;font-weight:bold;">Name Field</div>
+          <div style="display:flex;gap:16px;margin-bottom:10px;">
+            <div style="display:flex;flex-direction:column;gap:3px;" id="nameModeBtns">
+              <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="radio" name="nameMode" value="off" onchange="onNameModeChange()"> Off
+              </label>
+              <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="radio" name="nameMode" value="optional" checked onchange="onNameModeChange()"> Optional
+              </label>
+              <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="radio" name="nameMode" value="required" onchange="onNameModeChange()"> Required
+              </label>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;" id="namePositionBtns">
+              <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="radio" name="namePosition" value="before" onchange="onNamePositionChange()"> Before lobby screen
+              </label>
+              <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="radio" name="namePosition" value="top" checked onchange="onNamePositionChange()"> Top of lobby screen
+              </label>
+              <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="radio" name="namePosition" value="bottom" onchange="onNamePositionChange()"> Bottom of lobby screen
+              </label>
+              <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="radio" name="namePosition" value="after" onchange="onNamePositionChange()"> After lobby screen
+              </label>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+            <span style="font-size:0.8rem;color:#aaa;font-weight:bold;">Preset buttons shown to musicians:</span>
+            <div style="display:flex;align-items:center;gap:2px;" id="lobbyCountWrap">
+              <input type="number" id="lobbyPresetCount" min="1" max="12" value="4" style="width:28px;text-align:center;font-size:0.85rem;font-weight:bold;background:transparent;border:1px solid #555;border-radius:4px;color:#ccc;padding:1px 2px;-moz-appearance:textfield;outline:none;" onchange="onLobbyCountChange(this.value)">
+              <div id="lobbyCountArrows" style="display:flex;flex-direction:column;gap:0;">
+                <button onclick="adjustLobbyCount(1)" style="font-size:0.5rem;padding:0 3px;background:transparent;border:none;color:rgba(255,255,255,0.3);cursor:pointer;line-height:1;">▲</button>
+                <button onclick="adjustLobbyCount(-1)" style="font-size:0.5rem;padding:0 3px;background:transparent;border:none;color:rgba(255,255,255,0.3);cursor:pointer;line-height:1;">▼</button>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:8px;" id="lobbyModeRadios">
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:3px;">
+              <input type="radio" name="lobbyMode" value="satb" onchange="onLobbyModeChange()"> SATB
+            </label>
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:3px;">
+              <input type="radio" name="lobbyMode" value="match" checked onchange="onLobbyModeChange()"> Match current parts
+            </label>
+            <label style="font-size:0.72rem;color:#ccc;cursor:pointer;display:flex;align-items:center;gap:3px;">
+              <input type="radio" name="lobbyMode" value="custom" onchange="onLobbyModeChange()"> Custom
+            </label>
+          </div>
+          <div id="lobbyCustomList" style="display:none;max-height:280px;overflow-y:auto;"></div>
+        </div>
+        <!-- Preview -->
+        <div style="min-width:180px;max-width:200px;background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:12px;">
+          <div style="font-size:0.7rem;color:#666;text-align:center;margin-bottom:6px;">Musician lobby preview</div>
+          <div id="lobbyPreview" style="text-align:center;"></div>
+        </div>
+      </div>
     </div>
   </div>
   <div class="controls-row">
@@ -1108,9 +1121,12 @@ function sendPartConfig() {
 
 let lobbyNameMode = 'optional'; // 'off', 'optional', 'required'
 let lobbyNamePosition = 'top'; // 'before', 'top', 'bottom', 'after'
-let lobbyMatchParts = true; // when true, lobby presets mirror activeParts
-let lobbyCustomPresets = null; // array of {id, label, color, range:[lo,hi]} when not matching
+let lobbyMode = 'match'; // 'satb', 'match', 'custom'
+let lobbyCustomPresets = null; // array of {id, label, color, range:[lo,hi]} when custom
 let lobbyPanelOpen = false;
+
+// Default singing range for single-preset "Default" button: C3 to F5
+const DEFAULT_SINGING_RANGE = [48, 77];
 
 // The full nested PRESETS menu, reused for lobby custom dropdowns
 const LOBBY_PRESETS_MENU = [
@@ -1261,41 +1277,46 @@ function syncLobbyUI() {
   if (posRadio) posRadio.checked = true;
   document.getElementById('namePositionBtns').style.display = lobbyNameMode === 'off' ? 'none' : '';
 
+  // Sync lobby mode radios
+  const lobbyModeRadio = document.querySelector(`input[name="lobbyMode"][value="${lobbyMode}"]`);
+  if (lobbyModeRadio) lobbyModeRadio.checked = true;
+
   const countInput = document.getElementById('lobbyPresetCount');
-  const matchCb = document.getElementById('lobbyMatchParts');
-  matchCb.checked = lobbyMatchParts;
-  if (lobbyMatchParts) {
+  const arrows = document.getElementById('lobbyCountArrows');
+  const isCustom = lobbyMode === 'custom';
+
+  if (lobbyMode === 'satb') {
+    countInput.value = 4;
+  } else if (lobbyMode === 'match') {
     countInput.value = activeParts.length;
-    countInput.style.opacity = '0.35';
-    countInput.disabled = true;
-    document.getElementById('lobbyCustomList').style.display = 'none';
   } else {
-    const presets = lobbyCustomPresets || [];
-    countInput.value = presets.length;
-    countInput.style.opacity = '1';
-    countInput.disabled = false;
-    document.getElementById('lobbyCustomList').style.display = '';
-    buildLobbyCustomList();
+    countInput.value = (lobbyCustomPresets || []).length;
   }
+
+  countInput.style.opacity = isCustom ? '1' : '0.35';
+  countInput.disabled = !isCustom;
+  arrows.style.display = isCustom ? '' : 'none';
+  document.getElementById('lobbyCustomList').style.display = isCustom ? '' : 'none';
+  if (isCustom) buildLobbyCustomList();
 }
 
-function toggleMatchParts() {
-  const cb = document.getElementById('lobbyMatchParts');
-  lobbyMatchParts = cb.checked;
-  if (!lobbyMatchParts && !lobbyCustomPresets) {
-    // Snapshot current parts into custom presets
-    lobbyCustomPresets = activeParts.map(p => ({
-      id: p.id, label: p.label, color: p.color, range: [...(p.paradigmaticRange || p.range)]
+function onLobbyModeChange() {
+  const newMode = document.querySelector('input[name="lobbyMode"]:checked').value;
+  if (newMode === 'custom' && lobbyMode !== 'custom') {
+    // Snapshot current effective presets into custom
+    lobbyCustomPresets = getLobbyPresets().map(p => ({
+      id: p.id, label: p.label, color: p.color, range: [...p.range]
     }));
     recolorCustomPresets();
   }
+  lobbyMode = newMode;
   syncLobbyUI();
   sendLobbyConfig();
   updateLobbyPreview();
 }
 
 function adjustLobbyCount(delta) {
-  if (lobbyMatchParts) return;
+  if (lobbyMode !== 'custom') return;
   const inp = document.getElementById('lobbyPresetCount');
   const newVal = Math.max(1, Math.min(12, (parseInt(inp.value) || 1) + delta));
   inp.value = newVal;
@@ -1303,17 +1324,26 @@ function adjustLobbyCount(delta) {
 }
 
 function onLobbyCountChange(val) {
-  if (lobbyMatchParts) return;
+  if (lobbyMode !== 'custom') return;
   const n = Math.max(1, Math.min(12, parseInt(val) || 1));
   document.getElementById('lobbyPresetCount').value = n;
-  // Generate default presets for this count using the same logic as the main conductor
-  const defaultParts = getPartConfig(n);
-  computePartRanges(defaultParts);
-  computePartColors(defaultParts);
-  lobbyCustomPresets = defaultParts.map(p => {
-    const vr = VOCAL_RANGES[p.id];
-    return { id: p.id, label: p.label, color: p.color, range: vr ? [...vr] : [...p.range] };
-  });
+  // Resize custom presets: add defaults or trim
+  const current = lobbyCustomPresets || [];
+  if (n > current.length) {
+    // Add default parts for the new slots
+    const defaultParts = getPartConfig(n);
+    computePartRanges(defaultParts);
+    computePartColors(defaultParts);
+    for (let i = current.length; i < n; i++) {
+      const p = defaultParts[i] || defaultParts[defaultParts.length - 1];
+      const vr = VOCAL_RANGES[p.id];
+      current.push({ id: p.id, label: p.label, color: p.color, range: vr ? [...vr] : [...p.range] });
+    }
+  } else if (n < current.length) {
+    current.length = n;
+  }
+  lobbyCustomPresets = current;
+  recolorCustomPresets();
   buildLobbyCustomList();
   sendLobbyConfig();
   updateLobbyPreview();
@@ -1321,15 +1351,26 @@ function onLobbyCountChange(val) {
 
 // Called when conductor changes parts in the main view — update lobby if matching
 function onPartsChanged() {
-  if (lobbyMatchParts && lobbyPanelOpen) {
+  if (lobbyMode === 'match' && lobbyPanelOpen) {
     document.getElementById('lobbyPresetCount').value = activeParts.length;
     updateLobbyPreview();
   }
-  if (lobbyMatchParts) sendLobbyConfig();
+  if (lobbyMode === 'match') sendLobbyConfig();
+}
+
+function getSATBPresets() {
+  const satb = getPartConfig(4);
+  computePartRanges(satb);
+  computePartColors(satb);
+  return satb.map(p => {
+    const vr = VOCAL_RANGES[p.id];
+    return { id: p.id, label: p.label, color: p.color, range: vr ? [...vr] : [...p.range] };
+  });
 }
 
 function getLobbyPresets() {
-  if (lobbyMatchParts) return activeParts.map(p => ({
+  if (lobbyMode === 'satb') return getSATBPresets();
+  if (lobbyMode === 'match') return activeParts.map(p => ({
     id: p.id, label: p.label, color: p.color, range: [...(p.paradigmaticRange || p.range)]
   }));
   return lobbyCustomPresets || [];
@@ -1609,24 +1650,33 @@ function updateLobbyPreview() {
   rangeRow.textContent = 'Range: [—] to [—]';
   preview.appendChild(rangeRow);
 
-  // Preset text
-  const presetText = document.createElement('div');
-  presetText.style.cssText = 'font-size:0.6rem;color:#666;margin-bottom:4px;';
-  presetText.textContent = 'Or start with a preset:';
-  preview.appendChild(presetText);
-
   // Preset buttons
   const presets = getLobbyPresets();
-  const grid = document.createElement('div');
-  const cols = presets.length <= 4 ? 2 : (presets.length <= 6 ? 3 : 4);
-  grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px;margin-bottom:6px;`;
-  for (const p of presets) {
+  if (presets.length === 1) {
+    const presetText = document.createElement('div');
+    presetText.style.cssText = 'font-size:0.6rem;color:#666;margin-bottom:4px;';
+    presetText.textContent = 'Or start with the default:';
+    preview.appendChild(presetText);
     const btn = document.createElement('div');
-    btn.style.cssText = `background:${p.color}22;color:${p.color};font-size:0.6rem;font-weight:bold;padding:4px 2px;border-radius:4px;text-align:center;`;
-    btn.textContent = p.label;
-    grid.appendChild(btn);
+    btn.style.cssText = 'background:rgba(255,255,255,0.08);color:#aaa;font-size:0.6rem;font-weight:bold;padding:4px 8px;border-radius:4px;text-align:center;margin-bottom:6px;';
+    btn.textContent = 'Default';
+    preview.appendChild(btn);
+  } else {
+    const presetText = document.createElement('div');
+    presetText.style.cssText = 'font-size:0.6rem;color:#666;margin-bottom:4px;';
+    presetText.textContent = 'Or start with a preset:';
+    preview.appendChild(presetText);
+    const grid = document.createElement('div');
+    const cols = presets.length <= 4 ? 2 : (presets.length <= 6 ? 3 : 4);
+    grid.style.cssText = `display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px;margin-bottom:6px;`;
+    for (const p of presets) {
+      const btn = document.createElement('div');
+      btn.style.cssText = `background:${p.color}22;color:${p.color};font-size:0.6rem;font-weight:bold;padding:4px 2px;border-radius:4px;text-align:center;`;
+      btn.textContent = p.label;
+      grid.appendChild(btn);
+    }
+    preview.appendChild(grid);
   }
-  preview.appendChild(grid);
 
   // Name field at bottom
   if (showNameOnLobby && lobbyNamePosition === 'bottom') {

@@ -138,7 +138,7 @@
     <div class="range-piano-hint" id="rangePianoHint"></div>
   </div>
 
-  <div style="font-size:0.85rem;color:#666;margin-bottom:6px;">Or start with a preset category:</div>
+  <div id="presetLabel" style="font-size:0.85rem;color:#666;margin-bottom:6px;">Or start with a preset category:</div>
   <div class="parts" id="parts">
     <button class="part-btn bass" data-part="bass" onclick="selectPart(this)">Bass</button>
     <button class="part-btn tenor" data-part="tenor" onclick="selectPart(this)">Tenor</button>
@@ -378,22 +378,39 @@ function showLobby(code, config) {
 function buildLobbyPresetButtons(config) {
   if (config.presets && config.presets.length > 0) {
     const container = document.getElementById('parts');
+    const label = document.getElementById('presetLabel');
     container.innerHTML = '';
     for (const p of config.presets) {
       PART_COLORS[p.id] = p.color;
       if (p.range) RANGE[p.id] = p.range;
     }
-    const cols = config.presets.length <= 4 ? 2 : (config.presets.length <= 6 ? 3 : 4);
-    container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-    for (const p of config.presets) {
+    if (config.presets.length === 1) {
+      // Single preset: show "Default" button with typical singing range
+      label.textContent = 'Or start with the default:';
+      container.style.gridTemplateColumns = '1fr';
+      RANGE['_default'] = [48, 77]; // C3 to F5
       const btn = document.createElement('button');
       btn.className = 'part-btn';
-      btn.dataset.part = p.id;
-      btn.style.background = `${p.color}22`;
-      btn.style.color = p.color;
-      btn.textContent = p.label;
+      btn.dataset.part = '_default';
+      btn.style.background = 'rgba(255,255,255,0.08)';
+      btn.style.color = '#aaa';
+      btn.textContent = 'Default';
       btn.onclick = function() { selectPart(this); };
       container.appendChild(btn);
+    } else {
+      label.textContent = 'Or start with a preset category:';
+      const cols = config.presets.length <= 4 ? 2 : (config.presets.length <= 6 ? 3 : 4);
+      container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+      for (const p of config.presets) {
+        const btn = document.createElement('button');
+        btn.className = 'part-btn';
+        btn.dataset.part = p.id;
+        btn.style.background = `${p.color}22`;
+        btn.style.color = p.color;
+        btn.textContent = p.label;
+        btn.onclick = function() { selectPart(this); };
+        container.appendChild(btn);
+      }
     }
   }
 }
